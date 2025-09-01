@@ -1,4 +1,3 @@
-
 export const dynamic = 'force-dynamic'; // Prevent static caching in Vercel
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -30,12 +29,12 @@ Be concise and helpful. Always clarify if needed. Speak warmly, like a real assi
 // In-memory conversation history (temporary)
 const chatHistories = {};
 
-export default async function handler(req, res) {
-  if (req.method === 'GET') {
-    // Meta webhook verification
-    const mode = req.query['hub.mode'];
-    const token = req.query['hub.verify_token'];
-    const challenge = req.query['hub.challenge'];
+export async function GET(req) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const mode = searchParams.get('hub.mode');
+    const token = searchParams.get('hub.verify_token');
+    const challenge = searchParams.get('hub.challenge');
 
     console.log('🔍 Webhook verification request received:');
     console.log('Mode:', mode);
@@ -45,51 +44,54 @@ export default async function handler(req, res) {
 
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
       console.log('✅ Verification successful.');
-      return res.status(200).send(challenge);
+      return new Response(challenge, { status: 200 });
     } else {
       console.warn('❌ Verification failed. Token mismatch or invalid mode.');
-      return res.status(403).send('Forbidden');
+      return new Response('Forbidden', { status: 403 });
     }
+  } catch (error) {
+    console.error('❌ GET Handler Error:', error);
+    return new Response('Internal Server Error', { status: 500 });
   }
+}
 
-  if (req.method === 'POST') {
-    try {
-      const entry = req.body.entry || [];
-      for (const e of entry) {
-        const changes = e.changes || [];
-        for (const change of changes) {
-          const messages = change.value?.messages || [];
-          for (const message of messages) {
-            if (message.type === 'text') {
-              const from = message.from;
-              const userText = message.text.body;
+export async function POST(req) {
+  try {
+    const body = await req.json();
 
-              if (!chatHistories[from]) {
-                chatHistories[from] = [
-                  { role: 'system', content: systemPrompt }
-                ];
-              }
+    const entry = body.entry || [];
+    for (const e of entry) {
+      const changes = e.changes || [];
+      for (const change of changes) {
+        const messages = change.value?.messages || [];
+        for (const message of messages) {
+          if (message.type === 'text') {
+            const from = message.from;
+            const userText = message.text.body;
 
-              chatHistories[from].push({ role: 'user', content: userText });
-
-              const aiReply = await callOpenRouterAI(chatHistories[from]);
-
-              chatHistories[from].push({ role: 'assistant', content: aiReply });
-
-              await sendWhatsAppMessage(from, aiReply);
+            if (!chatHistories[from]) {
+              chatHistories[from] = [
+                { role: 'system', content: systemPrompt }
+              ];
             }
+
+            chatHistories[from].push({ role: 'user', content: userText });
+
+            const aiReply = await callOpenRouterAI(chatHistories[from]);
+
+            chatHistories[from].push({ role: 'assistant', content: aiReply });
+
+            await sendWhatsAppMessage(from, aiReply);
           }
         }
       }
-
-      return res.status(200).send('EVENT_RECEIVED');
-    } catch (error) {
-      console.error('❌ Webhook POST Error:', error);
-      return res.status(500).send('Internal Server Error');
     }
-  }
 
-  return res.status(405).send('Method Not Allowed');
+    return new Response('EVENT_RECEIVED', { status: 200 });
+  } catch (error) {
+    console.error('❌ Webhook POST Error:', error);
+    return new Response('Internal Server Error', { status: 500 });
+  }
 }
 
 // 🔗 Call OpenRouter AI
@@ -143,7 +145,3 @@ async function sendWhatsAppMessage(to, text) {
     console.error('❌ WhatsApp API Error:', err);
   }
 }
-
-
-
-
