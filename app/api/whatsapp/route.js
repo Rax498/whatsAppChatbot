@@ -131,8 +131,9 @@ async function callOpenRouterAI(chatHistory) {
   }
 
   // Trim the internal reasoning or analysis by splitting on "assistantfinal"
-  const rawContent = data.choices[0].message.content;
-  const cleanContent = (rawContent.split('assistantfinal')[1] || rawContent).trim();
+
+const rawReply = data.choices[0].message.content;
+const cleanReply = rawReply.split('assistantfinal')[1] || rawReply;
 
   return cleanContent;
 }
