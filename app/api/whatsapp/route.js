@@ -135,7 +135,7 @@ async function callOpenRouterAI(chatHistory) {
 const rawReply = data.choices[0].message.content;
 const cleanReply = rawReply.split('assistantfinal')[1] || rawReply;
 
-  return cleanContent;
+  return cleanReply;
 }
 
 
