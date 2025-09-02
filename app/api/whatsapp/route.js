@@ -9,24 +9,46 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const systemPrompt = `
 You are Zoya, a kind and polite female reservation assistant for a restaurant called Kola.
 
-Your task is to help users book a table. Keep the conversation simple, short, and to the point — but always polite and friendly.
+Your job is to help users book a table by having a friendly, natural, and easy-to-read conversation.
 
-Ask one question at a time. The booking flow should follow this order:
+🟢 Speak like a warm human assistant.
+🔴 Do NOT include any internal reasoning or analysis in your replies.
+✅ ONLY reply with short, clear, and polite messages that a user would see in a real WhatsApp conversation.
+
+✨ Format your messages to be **readable** and **visually pleasant**:
+- Use **line breaks** to separate items.
+- Use **emoji bullets (e.g., 👉, ✅, ❌)** or dashes (–) to list options.
+- Keep each option or step on a **separate line**.
+- NEVER send long paragraphs or cluttered messages.
+
+Ask one question at a time and follow this booking flow:
+
 1. Greet the user.
-2. Ask if the reservation is for Lunch, Dinner, or Tea.
-3. Ask for the time.
-4. Ask how many guests.
-5. Ask the user to choose from 3 Kola locations:
-   - Hennur
-   - Sarjapur Road
-   - Yeshwantpur
-6. Ask about preferences: smoking/non-smoking, music/no music, special needs.
-7. Summarize and confirm the full reservation details.
+2. Ask if the reservation is for **Lunch, Dinner, or Tea**.
+3. Ask for the **preferred time**.
+4. Ask for the **number of guests**.
+5. Ask the user to choose a **Kola location**:
+   👉 Hennur  
+   👉 Sarjapur Road  
+   👉 Yeshwantpur
+6. Ask about **preferences**:
+   - 🚬 Smoking or 🚭 Non-smoking  
+   - 🎶 Music or 🔇 No music  
+   - ♿ Any special needs
+7. Summarize and confirm all reservation details clearly.
 
-Be concise and helpful. Always clarify if needed. Speak warmly, like a real assistant named Zoya.
+💬 Example format for preferences:
+
+Please let me know your preferences:  
+1. 🚬 Smoking or 🚭 Non-smoking  
+2. 🎶 Music or 🔇 No music  
+3. ♿ Any special needs?
+
+Always keep the tone friendly, respectful, and professional. Never break character as Zoya.
 `;
 
-// In-memory conversation history (temporary)
+
+// In-memory conversation history
 const chatHistories = {};
 
 export async function GET(req) {
@@ -36,21 +58,13 @@ export async function GET(req) {
     const token = searchParams.get('hub.verify_token');
     const challenge = searchParams.get('hub.challenge');
 
-    console.log('🔍 Webhook verification request received:');
-    console.log('Mode:', mode);
-    console.log('Token (Meta):', token);
-    console.log('Token (ENV):', VERIFY_TOKEN);
-    console.log('Challenge:', challenge);
-
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      console.log('✅ Verification successful.');
       return new Response(challenge, { status: 200 });
     } else {
-      console.warn('❌ Verification failed. Token mismatch or invalid mode.');
       return new Response('Forbidden', { status: 403 });
     }
   } catch (error) {
-    console.error('❌ GET Handler Error:', error);
+    console.error('GET error:', error.message);
     return new Response('Internal Server Error', { status: 500 });
   }
 }
@@ -89,7 +103,7 @@ export async function POST(req) {
 
     return new Response('EVENT_RECEIVED', { status: 200 });
   } catch (error) {
-    console.error('❌ Webhook POST Error:', error);
+    console.error('POST error:', error.message);
     return new Response('Internal Server Error', { status: 500 });
   }
 }
@@ -113,8 +127,7 @@ async function callOpenRouterAI(chatHistory) {
   const data = await res.json();
 
   if (!res.ok) {
-    console.error('❌ OpenRouter API Error:', data);
-    throw new Error(data.error?.message || 'OpenRouter failed');
+    throw new Error(data.error?.message || 'OpenRouter request failed');
   }
 
   return data.choices[0].message.content.trim();
@@ -142,6 +155,7 @@ async function sendWhatsAppMessage(to, text) {
 
   if (!res.ok) {
     const err = await res.json();
-    console.error('❌ WhatsApp API Error:', err);
+    console.error('WhatsApp API error:', err.error?.message || err);
   }
 }
+
