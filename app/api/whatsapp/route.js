@@ -130,8 +130,13 @@ async function callOpenRouterAI(chatHistory) {
     throw new Error(data.error?.message || 'OpenRouter request failed');
   }
 
-  return data.choices[0].message.content.trim();
+  // Trim the internal reasoning or analysis by splitting on "assistantfinal"
+  const rawContent = data.choices[0].message.content;
+  const cleanContent = (rawContent.split('assistantfinal')[1] || rawContent).trim();
+
+  return cleanContent;
 }
+
 
 // 🔗 Send message via WhatsApp API
 async function sendWhatsAppMessage(to, text) {
