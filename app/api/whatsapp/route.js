@@ -14,9 +14,9 @@ Your job is to help users book a table by having a friendly, natural, and easy-t
 🔴 Do NOT include any internal reasoning or analysis in your replies.
 ✅ ONLY reply with short, clear, and polite messages that a user would see in a real WhatsApp conversation.
 
-✨ Format your messages to be **readable** and **visually pleasant**:
-- Use **line breaks** to separate items.
-- Keep each option or step on a **separate line**.
+✨ Format your messages to be *readable* and *visually pleasant*:
+- Use *line breaks* to separate items.
+- Keep each option or step on a *separate line*.
 `;
 
 // In-memory conversation history
@@ -77,7 +77,7 @@ export async function POST(req) {
               { title: 'Tea', payload: 'tea' },
               { title: 'Dinner', payload: 'dinner' }
             ];
-            await sendWhatsAppMessage(from, aiReply, buttons);
+            await sendWhatsAppMessage(from, "Please select your preferred dining time:", buttons);
           }
         }
       }
@@ -94,6 +94,33 @@ export async function POST(req) {
 async function sendWhatsAppMessage(to, text, buttons = []) {
   const url = `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`;
 
+  // If no buttons, send a simple text message
+  if (buttons.length === 0) {
+    const payload = {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'text',
+      text: {
+        body: text
+      }
+    };
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      console.error('WhatsApp API error:', err.error?.message || err);
+    }
+    return;
+  }
+
   // Construct the interactive message with correct structure
   const payload = {
     messaging_product: 'whatsapp',
@@ -108,8 +135,8 @@ async function sendWhatsAppMessage(to, text, buttons = []) {
         buttons: buttons.map(button => ({
           type: 'reply',  // Button type: 'reply'
           reply: {
+            id: button.payload,     // Button payload (value returned when button clicked)
             title: button.title,  // Button title (text on the button)
-            id: button.payload     // Button payload (value returned when button clicked)
           }
         })),
       },
@@ -157,5 +184,5 @@ async function callOpenRouterAI(chatHistory) {
   const rawReply = data.choices[0].message.content;
   const cleanReply = rawReply.split('assistantfinal')[1] || rawReply;
 
-  return cleanReply;
+  return cleanReply;
 }
