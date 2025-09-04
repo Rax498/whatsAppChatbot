@@ -1,13 +1,11 @@
-export const dynamic = 'force-dynamic'; // Prevent static caching in Vercel
-
 const WHATSAPP_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
-// System prompt for Zoya
 const systemPrompt = `
 You are Zoya, a kind and polite female reservation assistant for a restaurant called Kola.
+
 Your job is to help users book a table by having a friendly, natural, and easy-to-read conversation.
 
 🟢 Speak like a warm human assistant.
@@ -19,7 +17,6 @@ Your job is to help users book a table by having a friendly, natural, and easy-t
 - Keep each option or step on a **separate line**.
 `;
 
-// In-memory conversation history
 const chatHistories = {};
 
 export async function GET(req) {
@@ -53,31 +50,31 @@ export async function POST(req) {
           const from = message.from;
           let userText = message.text?.body || message.interactive?.button_reply?.payload;
 
-          // Initialize chat history for each user if it's the first interaction
+          // Initialize chat history if it's the user's first message
           if (!chatHistories[from]) {
             chatHistories[from] = [{ role: 'system', content: systemPrompt }];
           }
 
-          // Add the user's latest message or button payload to the chat history
+          // Update the chat history with the user's latest message
           chatHistories[from].push({ role: 'user', content: userText });
 
-          // Send the entire chat history to the AI to maintain context
+          // Get AI's response from OpenRouter (ChatGPT-like behavior)
           const aiReply = await callOpenRouterAI(chatHistories[from]);
 
-          // Add AI's reply to the chat history
+          // Update chat history with the assistant's response
           chatHistories[from].push({ role: 'assistant', content: aiReply });
 
           // Send the AI's response back to the user
           await sendWhatsAppMessage(from, aiReply);
 
-          // If the AI's reply includes a choice (Lunch, Tea, Dinner), send buttons for next actions
+          // If the AI's response suggests options like "Lunch", "Tea", or "Dinner", send buttons
           if (aiReply.includes('Lunch') || aiReply.includes('Tea') || aiReply.includes('Dinner')) {
             const buttons = [
               { title: 'Lunch', payload: 'lunch' },
               { title: 'Tea', payload: 'tea' },
               { title: 'Dinner', payload: 'dinner' }
             ];
-            await sendButtons(from, aiReply, buttons);
+            await sendInteractiveButtons(from, aiReply, buttons);
           }
         }
       }
@@ -90,9 +87,9 @@ export async function POST(req) {
   }
 }
 
-// 🔗 Send message via WhatsApp API with interactive buttons (Correct structure using fetch)
-async function sendButtons(to, text, buttons) {
-  // Format buttons array according to WhatsApp API structure
+// Function to send interactive buttons to WhatsApp using the correct API structure
+async function sendInteractiveButtons(to, text, buttons) {
+  // Structure buttons correctly according to WhatsApp's API
   const formattedButtons = buttons.slice(0, 3).map((button, index) => ({
     type: 'reply',
     reply: { id: `button_${index + 1}`, title: button.title },
@@ -100,7 +97,7 @@ async function sendButtons(to, text, buttons) {
 
   const payload = {
     messaging_product: 'whatsapp',
-    to: to, // Recipient phone number
+    to: to,
     type: 'interactive',
     interactive: {
       type: 'button',
@@ -124,13 +121,14 @@ async function sendButtons(to, text, buttons) {
     if (!response.ok) {
       const errorData = await response.json();
       console.error('Error sending buttons:', errorData.error?.message || errorData);
+      throw new Error(`WhatsApp API Error: ${JSON.stringify(errorData)}`);
     }
   } catch (error) {
     console.error('Error sending buttons:', error.message || error);
   }
 }
 
-// 🔗 Call OpenRouter AI (with full chat history to maintain context)
+// Function to call OpenRouter AI with full chat history
 async function callOpenRouterAI(chatHistory) {
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -140,7 +138,7 @@ async function callOpenRouterAI(chatHistory) {
     },
     body: JSON.stringify({
       model: 'openai/gpt-oss-20b:free',
-      messages: chatHistory,  // Pass the full conversation history
+      messages: chatHistory,  // Use full chat history
       temperature: 0.6,
       max_tokens: 2000,
     }),
@@ -152,9 +150,35 @@ async function callOpenRouterAI(chatHistory) {
     throw new Error(data.error?.message || 'OpenRouter request failed');
   }
 
-  // Clean the reply by removing internal reasoning if any
   const rawReply = data.choices[0].message.content;
-  const cleanReply = rawReply.split('assistantfinal')[1] || rawReply;
+  return rawReply;
+}
 
-  return cleanReply;
+// Function to send a simple WhatsApp message (text)
+async function sendWhatsAppMessage(to, text) {
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: to,
+    type: 'text',
+    text: { body: text },
+  };
+
+  try {
+    const response = await fetch(`https://graph.facebook.com/v16.0/${PHONE_NUMBER_ID}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Error sending WhatsApp message:', errorData.error?.message || errorData);
+      throw new Error(`WhatsApp API Error: ${JSON.stringify(errorData)}`);
+    }
+  } catch (error) {
+    console.error('Error sending WhatsApp message:', error.message || error);
+  }
 }
