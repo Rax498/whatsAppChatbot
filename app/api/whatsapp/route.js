@@ -14,9 +14,9 @@ Your job is to help users book a table by having a friendly, natural, and easy-t
 🔴 Do NOT include any internal reasoning or analysis in your replies.
 ✅ ONLY reply with short, clear, and polite messages that a user would see in a real WhatsApp conversation.
 
-✨ Format your messages to be *readable* and *visually pleasant*:
-- Use *line breaks* to separate items.
-- Keep each option or step on a *separate line*.
+✨ Format your messages to be **readable** and **visually pleasant**:
+- Use **line breaks** to separate items.
+- Keep each option or step on a **separate line**.
 `;
 
 // In-memory conversation history
@@ -51,15 +51,7 @@ export async function POST(req) {
         const messages = change.value?.messages || [];
         for (const message of messages) {
           const from = message.from;
-          let userText = message.text?.body || 
-                        message.interactive?.button_reply?.title || 
-                        message.interactive?.button_reply?.payload ||
-                        message.interactive?.list_reply?.title;
-
-          // Handle numbered responses for dining options
-          if (userText === '1') userText = 'Lunch';
-          if (userText === '2') userText = 'Tea';  
-          if (userText === '3') userText = 'Dinner';
+          let userText = message.text?.body || message.interactive?.button_reply?.payload;
 
           // Initialize chat history for each user if it's the first interaction
           if (!chatHistories[from]) {
@@ -78,18 +70,14 @@ export async function POST(req) {
           // Send the AI's response back to the user
           await sendWhatsAppMessage(from, aiReply);
 
-          // If the AI's reply includes a choice (Lunch, Tea, Dinner), send a simple text menu
+          // If the AI's reply includes a choice (Lunch, Tea, Dinner), send buttons for next actions
           if (aiReply.includes('Lunch') || aiReply.includes('Tea') || aiReply.includes('Dinner')) {
-            const menuText = `🍽️ *Please select your preferred dining time:*
-
-Reply with the number:
-1️⃣ *Lunch* (12:00 PM - 3:00 PM)
-2️⃣ *Tea* (3:00 PM - 6:00 PM) 
-3️⃣ *Dinner* (7:00 PM - 10:00 PM)
-
-Just type: *1*, *2*, or *3*`;
-            
-            await sendWhatsAppMessage(from, menuText);
+            const buttons = [
+              { title: 'Lunch', payload: 'lunch' },
+              { title: 'Tea', payload: 'tea' },
+              { title: 'Dinner', payload: 'dinner' }
+            ];
+            await sendButtons(from, aiReply, buttons);
           }
         }
       }
@@ -102,42 +90,43 @@ Just type: *1*, *2*, or *3*`;
   }
 }
 
-// 🔗 Send message via WhatsApp API - Simplified for text messages only
-async function sendWhatsAppMessage(to, text) {
-  const url = `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`;
+// 🔗 Send message via WhatsApp API with interactive buttons (Correct structure using fetch)
+async function sendButtons(to, text, buttons) {
+  // Format buttons array according to WhatsApp API structure
+  const formattedButtons = buttons.slice(0, 3).map((button, index) => ({
+    type: 'reply',
+    reply: { id: `button_${index + 1}`, title: button.title },
+  }));
 
   const payload = {
     messaging_product: 'whatsapp',
-    to: to,
-    type: 'text',
-    text: {
-      body: text
-    }
+    to: to, // Recipient phone number
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text },
+      action: {
+        buttons: formattedButtons,
+      },
+    },
   };
 
   try {
-    const res = await fetch(url, {
+    const response = await fetch(`https://graph.facebook.com/v16.0/${PHONE_NUMBER_ID}/messages`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
     });
 
-    if (!res.ok) {
-      const err = await res.json();
-      console.error('WhatsApp API error:', err.error?.message || err);
-      console.error('Error details:', JSON.stringify(err, null, 2));
-      console.error('Payload sent:', JSON.stringify(payload, null, 2));
-      return false;
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Error sending buttons:', errorData.error?.message || errorData);
     }
-    
-    console.log('Message sent successfully to:', to);
-    return true;
   } catch (error) {
-    console.error('Network error sending message:', error);
-    return false;
+    console.error('Error sending buttons:', error.message || error);
   }
 }
 
@@ -167,5 +156,5 @@ async function callOpenRouterAI(chatHistory) {
   const rawReply = data.choices[0].message.content;
   const cleanReply = rawReply.split('assistantfinal')[1] || rawReply;
 
-  return cleanReply;
+  return cleanReply;
 }
