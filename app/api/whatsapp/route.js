@@ -75,26 +75,76 @@ export async function POST(req) {
             chatHistories[from] = [{ role: 'system', content: systemPrompt }];
           }
 
-          // Update chat history with the user's latest message
-          chatHistories[from].push({ role: 'user', content: userText });
+          // Handle button click responses (like Lunch, Tea, Dinner)
+          if (message.interactive?.button_reply?.payload) {
+            const payload = message.interactive.button_reply.payload;
 
-          // Get AI's response from OpenRouter (ChatGPT-like behavior)
-          const aiReply = await callOpenRouterAI(chatHistories[from]);
+            // Update chat history with the user's latest message (button click)
+            chatHistories[from].push({ role: 'user', content: payload });
 
-          // Update chat history with the assistant's response
-          chatHistories[from].push({ role: 'assistant', content: aiReply });
+            // Handle each case (Lunch, Tea, Dinner)
+            let aiReply;
+            if (payload === 'lunch') {
+              aiReply = 'Great! What time would you like to visit for lunch?';
+            } else if (payload === 'tea') {
+              aiReply = 'Great! What time would you like to visit for tea?';
+            } else if (payload === 'dinner') {
+              aiReply = 'Great! What time would you like to visit for dinner?';
+            } else if (payload === 'location') {
+              aiReply = 'Which Kola location would you prefer?';
+            } else if (['Hennur', 'Sarjapur', 'Yeshwantpur'].includes(payload)) {
+              aiReply = `Great! You've chosen the ${payload} location. Let's move on to your preferences.`;
+            }
 
-          // Send the AI's response back to the user
-          await sendWhatsAppMessage(from, aiReply);
+            // Update chat history with the assistant's response
+            chatHistories[from].push({ role: 'assistant', content: aiReply });
 
-          // If the AI's response suggests options like "Lunch", "Tea", or "Dinner", send buttons
-          if (aiReply.includes('Lunch') || aiReply.includes('Tea') || aiReply.includes('Dinner')) {
-            const buttons = [
-              { title: 'Lunch', payload: 'lunch' },
-              { title: 'Tea', payload: 'tea' },
-              { title: 'Dinner', payload: 'dinner' }
-            ];
-            await sendInteractiveButtons(from, aiReply, buttons);
+            // Send the follow-up response
+            await sendWhatsAppMessage(from, aiReply);
+
+            // If meal type was selected, send location buttons
+            if (['lunch', 'tea', 'dinner'].includes(payload)) {
+              const locationButtons = [
+                { title: 'Hennur', payload: 'Hennur' },
+                { title: 'Sarjapur Road', payload: 'Sarjapur' },
+                { title: 'Yeshwantpur', payload: 'Yeshwantpur' },
+              ];
+              await sendInteractiveButtons(from, 'Please select a location:', locationButtons);
+            }
+
+            // If location was chosen, ask for preferences (smoking/music)
+            if (['Hennur', 'Sarjapur', 'Yeshwantpur'].includes(payload)) {
+              const preferenceButtons = [
+                { title: 'Smoking', payload: 'smoking' },
+                { title: 'Non-Smoking', payload: 'non-smoking' },
+                { title: 'Music', payload: 'music' },
+                { title: 'No Music', payload: 'no-music' },
+              ];
+              await sendInteractiveButtons(from, 'Do you have any location preferences?', preferenceButtons);
+            }
+          } else {
+            // Handle normal text messages (not button clicks)
+            userText = message.text?.body;
+            chatHistories[from].push({ role: 'user', content: userText });
+
+            // Get AI's response from OpenRouter (ChatGPT-like behavior)
+            const aiReply = await callOpenRouterAI(chatHistories[from]);
+
+            // Update chat history with the assistant's response
+            chatHistories[from].push({ role: 'assistant', content: aiReply });
+
+            // Send the AI's response back to the user
+            await sendWhatsAppMessage(from, aiReply);
+
+            // If the AI's response suggests options like "Lunch", "Tea", or "Dinner", send buttons
+            if (aiReply.includes('Lunch') || aiReply.includes('Tea') || aiReply.includes('Dinner')) {
+              const buttons = [
+                { title: 'Lunch', payload: 'lunch' },
+                { title: 'Tea', payload: 'tea' },
+                { title: 'Dinner', payload: 'dinner' }
+              ];
+              await sendInteractiveButtons(from, aiReply, buttons);
+            }
           }
         }
       }
