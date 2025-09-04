@@ -1,5 +1,3 @@
-
-
 export const dynamic = 'force-dynamic'; // Prevent static caching in Vercel
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -114,19 +112,21 @@ export async function POST(req) {
   }
 }
 
-// 🔗 Send message via WhatsApp API with buttons
+// 🔗 Send message via WhatsApp API with buttons (Correct structure for interactive buttons)
 async function sendWhatsAppMessage(to, text, buttons = []) {
   const url = `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`;
 
-  // Prepare buttons for WhatsApp interactive API
-  let interactiveButtons = [];
-  if (buttons.length > 0) {
-    interactiveButtons = buttons.map(button => ({
-      type: 'quick_reply',
-      title: button.title,
-      payload: button.payload
-    }));
-  }
+  // Prepare buttons for WhatsApp interactive API (Correct button structure)
+  const interactiveButtons = buttons.map(button => ({
+    type: 'button',
+    button: {
+      type: 'reply',
+      reply: {
+        title: button.title,  // Title for the button
+        id: button.payload     // Payload sent when button is clicked
+      }
+    }
+  }));
 
   const payload = {
     messaging_product: 'whatsapp',
@@ -136,15 +136,15 @@ async function sendWhatsAppMessage(to, text, buttons = []) {
       type: 'button',
       header: {
         type: 'text',
-        text: text
+        text: text, // This is the message that will be shown above the buttons
       },
       body: {
-        text: 'Please select an option:'
+        text: 'Please select an option:',  // The body text that will be shown below the header
       },
       action: {
-        buttons: interactiveButtons
-      }
-    }
+        buttons: interactiveButtons,
+      },
+    },
   };
 
   const res = await fetch(url, {
@@ -190,4 +190,3 @@ async function callOpenRouterAI(chatHistory) {
 
   return cleanReply;
 }
- 
