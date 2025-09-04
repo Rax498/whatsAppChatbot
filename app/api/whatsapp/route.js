@@ -206,7 +206,7 @@ async function callOpenRouterAI(chatHistory) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash-image-preview',
+      model: 'openai/gpt-oss-20b:free',
       messages: chatHistory,  // Use full chat history
       temperature: 0.6,
       max_tokens: 2000,
