@@ -51,7 +51,10 @@ export async function POST(req) {
         const messages = change.value?.messages || [];
         for (const message of messages) {
           const from = message.from;
-          let userText = message.text?.body || message.interactive?.button_reply?.payload;
+          let userText = message.text?.body || 
+                        message.interactive?.button_reply?.title || 
+                        message.interactive?.button_reply?.payload ||
+                        message.interactive?.list_reply?.title;
 
           // Initialize chat history for each user if it's the first interaction
           if (!chatHistories[from]) {
@@ -73,11 +76,24 @@ export async function POST(req) {
           // If the AI's reply includes a choice (Lunch, Tea, Dinner), send buttons for next actions
           if (aiReply.includes('Lunch') || aiReply.includes('Tea') || aiReply.includes('Dinner')) {
             const buttons = [
-              { title: 'Lunch', payload: 'lunch' },
-              { title: 'Tea', payload: 'tea' },
-              { title: 'Dinner', payload: 'dinner' }
+              { title: 'Lunch', payload: 'LUNCH_SELECTED' },
+              { title: 'Tea', payload: 'TEA_SELECTED' },
+              { title: 'Dinner', payload: 'DINNER_SELECTED' }
             ];
-            await sendWhatsAppMessage(from, "Please select your preferred dining time:", buttons);
+            
+            // Try to send interactive buttons, fallback to text if not supported
+            const buttonsSent = await sendWhatsAppMessage(from, "Please select your preferred dining time:", buttons);
+            
+            // If buttons failed, send text options instead
+            if (!buttonsSent) {
+              const fallbackText = `Please reply with one of these options:
+1️⃣ Lunch
+2️⃣ Tea  
+3️⃣ Dinner
+
+Just type: "Lunch", "Tea", or "Dinner"`;
+              await sendWhatsAppMessage(from, fallbackText);
+            }
           }
         }
       }
@@ -117,30 +133,32 @@ async function sendWhatsAppMessage(to, text, buttons = []) {
     if (!res.ok) {
       const err = await res.json();
       console.error('WhatsApp API error:', err.error?.message || err);
+      return false;
     }
-    return;
+    return true;
   }
 
-  // Construct the interactive message with correct structure
+  // Construct the interactive message with correct structure for WhatsApp Business API
   const payload = {
     messaging_product: 'whatsapp',
+    recipient_type: 'individual',
     to,
     type: 'interactive',
     interactive: {
-      type: 'button',  // Type of interactive message
+      type: 'button',
       body: {
-        text: text, // Message to display above the buttons
+        text: text
       },
       action: {
-        buttons: buttons.map(button => ({
-          type: 'reply',  // Button type: 'reply'
+        buttons: buttons.map((button, index) => ({
+          type: 'reply',
           reply: {
-            id: button.payload,     // Button payload (value returned when button clicked)
-            title: button.title,  // Button title (text on the button)
+            id: button.payload,
+            title: button.title
           }
-        })),
-      },
-    },
+        }))
+      }
+    }
   };
 
   const res = await fetch(url, {
@@ -154,8 +172,13 @@ async function sendWhatsAppMessage(to, text, buttons = []) {
 
   if (!res.ok) {
     const err = await res.json();
-    console.error('WhatsApp API error:', err.error?.message || err);
+    console.error('WhatsApp Interactive Button error:', err.error?.message || err);
+    console.error('Full error response:', JSON.stringify(err, null, 2));
+    return false; // Return false to indicate button sending failed
   }
+  
+  console.log('Interactive buttons sent successfully');
+  return true; // Return true to indicate success
 }
 
 // 🔗 Call OpenRouter AI (with full chat history to maintain context)
@@ -168,7 +191,7 @@ async function callOpenRouterAI(chatHistory) {
     },
     body: JSON.stringify({
       model: 'openai/gpt-oss-20b:free',
-      messages: chatHistory,  // Pass the full conversation history
+      messages: chatHistory,  
       temperature: 0.6,
       max_tokens: 2000,
     }),
