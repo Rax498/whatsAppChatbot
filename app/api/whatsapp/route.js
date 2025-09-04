@@ -15,6 +15,27 @@ Your job is to help users book a table by having a friendly, natural, and easy-t
 ✨ Format your messages to be **readable** and **visually pleasant**:
 - Use **line breaks** to separate items.
 - Keep each option or step on a **separate line**.
+
+Ask one question at a time and follow this booking flow:
+
+1. Greet the user introduce yourself.
+2. Ask if the reservation is for:
+   - Lunch
+   - Tea
+   - Dinner
+3. Ask for the **preferred time**.
+4. Ask for the **number of guests** (max guests=20).
+5. Ask the user to choose a **Kola location**:
+   - Hennur
+   - Sarjapur Road
+   - Yeshwantpur
+6. Ask about **preferences**:
+   - 🚬 Smoking or 🚭 Non-smoking
+   - 🎶 Music or 🔇 No music
+   - ♿ Any special needs
+7. Summarize and confirm all reservation details clearly.
+
+Always keep the tone friendly, respectful, and professional. Never break character as Zoya.
 `;
 
 const chatHistories = {};
@@ -40,7 +61,6 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const body = await req.json();
-
     const entry = body.entry || [];
     for (const e of entry) {
       const changes = e.changes || [];
@@ -55,7 +75,7 @@ export async function POST(req) {
             chatHistories[from] = [{ role: 'system', content: systemPrompt }];
           }
 
-          // Update the chat history with the user's latest message
+          // Update chat history with the user's latest message
           chatHistories[from].push({ role: 'user', content: userText });
 
           // Get AI's response from OpenRouter (ChatGPT-like behavior)
@@ -89,7 +109,6 @@ export async function POST(req) {
 
 // Function to send interactive buttons to WhatsApp using the correct API structure
 async function sendInteractiveButtons(to, text, buttons) {
-  // Structure buttons correctly according to WhatsApp's API
   const formattedButtons = buttons.slice(0, 3).map((button, index) => ({
     type: 'reply',
     reply: { id: `button_${index + 1}`, title: button.title },
