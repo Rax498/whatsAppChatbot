@@ -70,7 +70,7 @@ export async function POST(req) {
           // Send the AI's response back to the user
           await sendWhatsAppMessage(from, aiReply);
 
-          // If the AI's reply indicates a button interaction, send buttons for next actions
+          // If the AI's reply includes a choice (Lunch, Tea, Dinner), send buttons for next actions
           if (aiReply.includes('Lunch') || aiReply.includes('Tea') || aiReply.includes('Dinner')) {
             const buttons = [
               { title: 'Lunch', payload: 'lunch' },
