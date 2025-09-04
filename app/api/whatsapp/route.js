@@ -1,3 +1,5 @@
+
+
 export const dynamic = 'force-dynamic'; // Prevent static caching in Vercel
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -5,7 +7,7 @@ const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
-// System prompt for Zoya
+// System prompt for Zoya (kept intact as requested)
 const systemPrompt = `
 You are Zoya, a kind and polite female reservation assistant for a restaurant called Kola.
 
@@ -41,7 +43,6 @@ Ask one question at a time and follow this booking flow:
 Always keep the tone friendly, respectful, and professional. Never break character as Zoya.
 `;
 
-
 // In-memory conversation history
 const chatHistories = {};
 
@@ -73,23 +74,34 @@ export async function POST(req) {
       for (const change of changes) {
         const messages = change.value?.messages || [];
         for (const message of messages) {
-          if (message.type === 'text') {
-            const from = message.from;
-            const userText = message.text.body;
+          const from = message.from;
+          let userText = message.text?.body || message.interactive?.button_reply?.payload;
 
-            if (!chatHistories[from]) {
-              chatHistories[from] = [
-                { role: 'system', content: systemPrompt }
-              ];
-            }
+          // Initialize chat history for each user if it's the first interaction
+          if (!chatHistories[from]) {
+            chatHistories[from] = [{ role: 'system', content: systemPrompt }];
+          }
 
-            chatHistories[from].push({ role: 'user', content: userText });
+          // Add the user's latest message or button payload to the chat history
+          chatHistories[from].push({ role: 'user', content: userText });
 
-            const aiReply = await callOpenRouterAI(chatHistories[from]);
+          // Send the entire chat history to the AI to maintain context
+          const aiReply = await callOpenRouterAI(chatHistories[from]);
 
-            chatHistories[from].push({ role: 'assistant', content: aiReply });
+          // Add AI's reply to the chat history
+          chatHistories[from].push({ role: 'assistant', content: aiReply });
 
-            await sendWhatsAppMessage(from, aiReply);
+          // Send the AI's response back to the user
+          await sendWhatsAppMessage(from, aiReply);
+
+          // If the AI's reply indicates a button interaction, send buttons for next actions
+          if (aiReply.includes('Lunch') || aiReply.includes('Tea') || aiReply.includes('Dinner')) {
+            const buttons = [
+              { title: 'Lunch', payload: 'lunch' },
+              { title: 'Tea', payload: 'tea' },
+              { title: 'Dinner', payload: 'dinner' }
+            ];
+            await sendWhatsAppMessage(from, aiReply, buttons);
           }
         }
       }
@@ -102,46 +114,37 @@ export async function POST(req) {
   }
 }
 
-// 🔗 Call OpenRouter AI
-async function callOpenRouterAI(chatHistory) {
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'openai/gpt-oss-20b:free',
-      messages: chatHistory,
-      temperature: 0.6,
-      max_tokens: 2000,
-    }),
-  });
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(data.error?.message || 'OpenRouter request failed');
-  }
-
-  // Trim the internal reasoning or analysis by splitting on "assistantfinal"
-
-const rawReply = data.choices[0].message.content;
-const cleanReply = rawReply.split('assistantfinal')[1] || rawReply;
-
-  return cleanReply;
-}
-
-
-// 🔗 Send message via WhatsApp API
-async function sendWhatsAppMessage(to, text) {
+// 🔗 Send message via WhatsApp API with buttons
+async function sendWhatsAppMessage(to, text, buttons = []) {
   const url = `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`;
+
+  // Prepare buttons for WhatsApp interactive API
+  let interactiveButtons = [];
+  if (buttons.length > 0) {
+    interactiveButtons = buttons.map(button => ({
+      type: 'quick_reply',
+      title: button.title,
+      payload: button.payload
+    }));
+  }
 
   const payload = {
     messaging_product: 'whatsapp',
     to,
-    type: 'text',
-    text: { body: text },
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: {
+        type: 'text',
+        text: text
+      },
+      body: {
+        text: 'Please select an option:'
+      },
+      action: {
+        buttons: interactiveButtons
+      }
+    }
   };
 
   const res = await fetch(url, {
@@ -159,3 +162,32 @@ async function sendWhatsAppMessage(to, text) {
   }
 }
 
+// 🔗 Call OpenRouter AI (with full chat history to maintain context)
+async function callOpenRouterAI(chatHistory) {
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'openai/gpt-oss-20b:free',
+      messages: chatHistory,  // Pass the full conversation history
+      temperature: 0.6,
+      max_tokens: 2000,
+    }),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error?.message || 'OpenRouter request failed');
+  }
+
+  // Clean the reply by removing internal reasoning if any
+  const rawReply = data.choices[0].message.content;
+  const cleanReply = rawReply.split('assistantfinal')[1] || rawReply;
+
+  return cleanReply;
+}
+ 
