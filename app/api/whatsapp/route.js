@@ -119,12 +119,9 @@ async function sendWhatsAppMessage(to, text, buttons = []) {
   // Prepare buttons for WhatsApp interactive API (Correct button structure)
   const interactiveButtons = buttons.map(button => ({
     type: 'button',
-    button: {
-      type: 'reply',
-      reply: {
-        title: button.title,  // Title for the button
-        id: button.payload     // Payload sent when button is clicked
-      }
+    reply: {
+      title: button.title,  // Title for the button
+      id: button.payload     // Payload sent when button is clicked
     }
   }));
 
