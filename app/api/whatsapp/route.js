@@ -5,10 +5,9 @@ const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
-// System prompt for Zoya (kept intact as requested)
+// System prompt for Zoya
 const systemPrompt = `
 You are Zoya, a kind and polite female reservation assistant for a restaurant called Kola.
-
 Your job is to help users book a table by having a friendly, natural, and easy-to-read conversation.
 
 🟢 Speak like a warm human assistant.
@@ -18,27 +17,6 @@ Your job is to help users book a table by having a friendly, natural, and easy-t
 ✨ Format your messages to be **readable** and **visually pleasant**:
 - Use **line breaks** to separate items.
 - Keep each option or step on a **separate line**.
-
-Ask one question at a time and follow this booking flow:
-
-1. Greet the user introduce urself.
-2. Ask if the reservation is for 
-   1.Lunch
-   2.Tea
-   3.Dinner
-3. Ask for the **preferred time**.
-4. Ask for the **number of guests** (max guests=20).
-5. Ask the user to choose a **Kola location**:
-   1. Hennur  
-   2. Sarjapur Road  
-   3. Yeshwantpur
-6. Ask about **preferences**:
-   - 🚬 Smoking or 🚭 Non-smoking  
-   - 🎶 Music or 🔇 No music  
-   - ♿ Any special needs
-7. Summarize and confirm all reservation details clearly.
-
-Always keep the tone friendly, respectful, and professional. Never break character as Zoya.
 `;
 
 // In-memory conversation history
@@ -118,7 +96,7 @@ async function sendWhatsAppMessage(to, text, buttons = []) {
 
   // Prepare buttons for WhatsApp interactive API (Correct button structure)
   const interactiveButtons = buttons.map(button => ({
-    type: 'button',
+    type: 'reply',
     reply: {
       title: button.title,  // Title for the button
       id: button.payload     // Payload sent when button is clicked
