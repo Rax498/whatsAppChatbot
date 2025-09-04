@@ -90,34 +90,28 @@ export async function POST(req) {
   }
 }
 
-// 🔗 Send message via WhatsApp API with buttons (Correct structure for interactive buttons)
+// 🔗 Send message via WhatsApp API with interactive buttons (Correct structure)
 async function sendWhatsAppMessage(to, text, buttons = []) {
-  const url = `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`;
+  const url = `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`;
 
-  // Prepare buttons for WhatsApp interactive API (Correct button structure)
-  const interactiveButtons = buttons.map(button => ({
-    type: 'reply',
-    reply: {
-      title: button.title,  // Title for the button
-      id: button.payload     // Payload sent when button is clicked
-    }
-  }));
-
+  // Construct the interactive message with correct structure
   const payload = {
     messaging_product: 'whatsapp',
     to,
     type: 'interactive',
     interactive: {
-      type: 'button',
-      header: {
-        type: 'text',
-        text: text, // This is the message that will be shown above the buttons
-      },
+      type: 'button',  // Type of interactive message
       body: {
-        text: 'Please select an option:',  // The body text that will be shown below the header
+        text: text, // Message to display above the buttons
       },
       action: {
-        buttons: interactiveButtons,
+        buttons: buttons.map(button => ({
+          type: 'reply',  // Button type: 'reply'
+          reply: {
+            title: button.title,  // Button title (text on the button)
+            id: button.payload     // Button payload (value returned when button clicked)
+          }
+        })),
       },
     },
   };
