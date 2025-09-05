@@ -1,226 +1,163 @@
-// File: /app/api/whatsapp/route.ts
+// Next.js API handler: WhatsApp reservation flow with AI + proper button structure
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
+const steps = [
+  { key: 'meal', question: 'Is your reservation for Lunch, Tea, or Dinner?', buttons: ['Lunch', 'Tea', 'Dinner'] },
+  { key: 'time', question: 'What time would you like to visit?', buttons: [] },
+  { key: 'guests', question: 'How many guests (max 20)?', buttons: [] },
+  { key: 'location', question: 'Which Kola location do you prefer?', buttons: ['Hennur', 'Sarjapur Road', 'Yeshwantpur'] },
+  { key: 'preferences', question: 'Any preferences? (Smoking, Music, or Special needs)', buttons: ['Smoking', 'Non‑Smoking', 'Music', 'No Music', 'None'] },
+  { key: 'date', question: 'Please choose a date (within 30 days):', buttons: [] },
+  { key: 'confirm', question: 'Here is your reservation summary. Confirm or Cancel?', buttons: ['Confirm', 'Cancel'] },
+];
+
 const sessions = {};
 
 const systemPrompt = `
-You are Zoya, a polite WhatsApp reservation assistant for the restaurant Kola.
+You are Zoya, a warm, friendly reservation assistant for Kola.
 
-Follow this strict flow and return ONLY structured JSON:
+Follow this flow:
+1. Ask if the reservation is for Lunch, Tea, or Dinner.
+2. Ask for preferred time.
+3. Ask for number of guests (max 20).
+4. Ask for location: Hennur, Sarjapur Road, or Yeshwantpur.
+5. Ask for preferences (Smoking, Music, or special needs).
+6. Ask for booking date within 30 days.
+7. Summarize and ask for confirmation.
 
-1. Greet the user and introduce yourself (only once).
-2. Ask if the reservation is for: Lunch, Tea, or Dinner.
-3. Ask for the preferred time (e.g., 12:30 PM).
-4. Ask for number of guests (max 20).
-5. Ask for the Kola location: Hennur, Sarjapur Road, or Yeshwantpur.
-6. Ask about preferences (one at a time):
-   - Smoking or Non-smoking
-   - Music or No music
-   - Any special needs
-7. Summarize the reservation clearly and ask for confirmation.
+If user provides multiple details (e.g. "Dinner at 7 for 3 at Hennur tomorrow"), parse and skip steps accordingly.
 
-If the user gives multiple details at once (e.g., “Dinner at 8 PM for 4 at Sarjapur”), extract them and only ask for what's missing.
-
-For date:
-- Use "today", "tomorrow", or allow picking a date within 30 days.
-- Normalize all dates to YYYY-MM-DD internally.
-
-Always respond with this format:
-
-{
-  "step": "time",
-  "message": "What time would you like to come?",
-  "buttons": []
-}
+Return only JSON:
+{ "step": "<step_key>", "message": "<user visible text>", "buttons": ["Option1","Option2"] }
 `;
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  const mode = searchParams.get('hub.mode');
-  const token = searchParams.get('hub.verify_token');
-  const challenge = searchParams.get('hub.challenge');
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    return new Response(challenge, { status: 200 });
+  if (searchParams.get('hub.mode') === 'subscribe' && searchParams.get('hub.verify_token') === VERIFY_TOKEN) {
+    return new Response(searchParams.get('hub.challenge'), { status: 200 });
   }
   return new Response('Forbidden', { status: 403 });
 }
 
 export async function POST(req) {
-  try {
-    const body = await req.json();
-    for (const entry of body.entry || []) {
-      for (const change of entry.changes || []) {
-        const messages = change.value?.messages || [];
-        for (const msg of messages) {
-          const from = msg.from;
-          const userText =
-            msg.interactive?.button_reply?.title?.trim() ||
-            msg.text?.body?.trim() || '';
+  const body = await req.json();
+  for (const entry of body.entry || []) {
+    for (const change of entry.changes || []) {
+      for (const message of change.value?.messages || []) {
+        const from = message.from;
+        const userInput = message.interactive?.button_reply?.title?.trim() || message.text?.body?.trim() || '';
 
-          // Initialize user session
-          if (!sessions[from]) {
-            sessions[from] = {
-              history: [{ role: 'system', content: systemPrompt }],
-              reservation: {},
-              greeted: false
-            };
-          }
+        if (!sessions[from]) {
+          sessions[from] = { history: [{ role: 'system', content: systemPrompt }], reservation: {} };
+        }
+        const session = sessions[from];
+        session.history.push({ role: 'user', content: userInput });
 
-          const session = sessions[from];
-          session.history.push({ role: 'user', content: userText });
+        const aiRes = await callOpenRouterAI(session.history);
+        session.history.push({ role: 'assistant', content: aiRes });
 
-          // Call AI
-          const aiReply = await callOpenRouterAI(session.history);
-          session.history.push({ role: 'assistant', content: aiReply });
+        let parsed;
+        try { parsed = JSON.parse(aiRes); }
+        catch {
+          await sendText(from, "Sorry, I didn't catch that. Could you rephrase?");
+          continue;
+        }
 
-          let parsed;
-          try {
-            parsed = JSON.parse(aiReply);
-          } catch {
-            await sendTextMessage(from, "Sorry, I didn't understand that. Could you rephrase?");
-            continue;
-          }
+        const { step, message: msgText, buttons = [] } = parsed;
+        if (step && userInput && step !== 'confirm') {
+          session.reservation[step] = userInput;
+        }
 
-          const { step, message, buttons = [] } = parsed;
+        if (step === 'guests' && parseInt(session.reservation.guests) > 20) {
+          await sendText(from, "Maximum is 20 guests. Please enter a valid number.");
+          continue;
+        }
 
-          if (step && step !== 'confirm') {
-            session.reservation[step] = userText;
-          }
+        if (step === 'date') {
+          await sendButtons(from, msgText, getNextDates(5));
+          continue;
+        }
 
-          if (step === 'guests') {
-            const guests = parseInt(userText);
-            if (guests > 20) {
-              await sendTextMessage(from, "Sorry, we only allow up to 20 guests.");
-              continue;
-            }
-          }
+        if (step === 'confirm') {
+          const summary = generateSummary(session.reservation);
+          await sendButtons(from, summary, ['Confirm', 'Cancel']);
+          continue;
+        }
 
-          if (step === 'date') {
-            // simulate date buttons (today + 2 days)
-            const dateButtons = getDateButtons(3);
-            await sendButtonMessage(from, message, dateButtons);
-            continue;
-          }
-
-          if (step === 'confirm') {
-            const summary = generateSummary(session.reservation);
-            await sendButtonMessage(from, summary, ['Confirm', 'Cancel']);
-            continue;
-          }
-
-          if (buttons.length > 0) {
-            await sendButtonMessage(from, message, buttons);
-          } else {
-            await sendTextMessage(from, message);
-          }
+        if (buttons.length > 0) {
+          await sendButtons(from, msgText, buttons);
+        } else {
+          await sendText(from, msgText);
         }
       }
     }
-
-    return new Response('EVENT_RECEIVED', { status: 200 });
-  } catch (err) {
-    console.error(err);
-    return new Response('Internal Server Error', { status: 500 });
   }
+  return new Response('EVENT_RECEIVED', { status: 200 });
 }
 
-function getDateButtons(n = 3) {
-  const buttons = [];
-  for (let i = 0; i < n; i++) {
+function getNextDates(n) {
+  return Array.from({ length: n }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    const label = d.toDateString(); // e.g., "Fri Sep 06 2025"
-    buttons.push(label);
-  }
-  return buttons;
+    return d.toISOString().split('T')[0]; // YYYY-MM-DD
+  });
 }
 
 function generateSummary(res) {
   return `Here’s your reservation:
 
-🍽️ Meal: ${res.meal || '-'}
-🕒 Time: ${res.time || '-'}
-👥 Guests: ${res.guests || '-'}
-📍 Location: ${res.location || '-'}
-📅 Date: ${res.date || '-'}
-🚬 Smoking: ${res.smoking || '-'}
-🎶 Music: ${res.music || '-'}
-♿ Special Needs: ${res.special_needs || 'None'}
+• Meal: ${res.meal || '-'}
+• Time: ${res.time || '-'}
+• Guests: ${res.guests || '-'}
+• Location: ${res.location || '-'}
+• Preferences: ${res.preferences || '-'}
+• Date: ${res.date || '-'}
 
-Would you like to confirm?`;
+Please Confirm or Cancel.`;
 }
 
 async function callOpenRouterAI(history) {
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'openai/gpt-oss-20b:free',
-      messages: history,
-      temperature: 0.5,
-      max_tokens: 800
-    })
+    headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'openai/gpt-oss-20b:free', messages: history, temperature: 0.6, max_tokens: 500 }),
   });
-
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || 'OpenRouter failed');
+  if (!res.ok) throw new Error(data.error?.message || 'AI error');
   return data.choices[0].message.content;
 }
 
-async function sendTextMessage(to, text) {
-  const res = await fetch(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, {
+async function sendText(to, text) {
+  await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to,
-      type: 'text',
-      text: { body: text }
-    })
+    headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'text', text: { body: text } }),
   });
-
-  if (!res.ok) {
-    const err = await res.json();
-    console.error('WhatsApp text send error:', err.error?.message || err);
-  }
 }
 
-async function sendButtonMessage(to, text, buttons) {
-  const btns = buttons.slice(0, 3).map((title, i) => ({
+async function sendButtons(to, text, buttons) {
+  const btns = buttons.slice(0, 3).map((title, idx) => ({
     type: 'reply',
-    reply: { id: `btn_${i + 1}`, title }
+    reply: { id: `btn_${idx + 1}`, title },
   }));
 
-  const res = await fetch(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, {
+  await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messaging_product: 'whatsapp',
+      recipient_type: 'individual',
       to,
       type: 'interactive',
       interactive: {
         type: 'button',
         body: { text },
-        action: { buttons: btns }
-      }
-    })
+        action: { buttons: btns },
+      },
+    }),
   });
-
-  if (!res.ok) {
-    const err = await res.json();
-    console.error('WhatsApp button send error:', err.error?.message || err);
-  }
 }
