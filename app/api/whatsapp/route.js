@@ -18,7 +18,7 @@ Your job is to help users book a table by having a friendly, natural, and easy-t
 
 Ask one question at a time and follow this booking flow:
 
-1. Greet the user introduce yourself.
+1. Greet the user and introduce yourself.
 2. Ask if the reservation is for:
    - Lunch
    - Tea
@@ -62,6 +62,7 @@ export async function POST(req) {
   try {
     const body = await req.json();
     const entry = body.entry || [];
+
     for (const e of entry) {
       const changes = e.changes || [];
       for (const change of changes) {
@@ -69,7 +70,6 @@ export async function POST(req) {
         for (const message of messages) {
           const from = message.from;
 
-          // Initialize chat history for user if first time
           if (!chatHistories[from]) {
             chatHistories[from] = [{ role: 'system', content: systemPrompt }];
           }
@@ -79,36 +79,30 @@ export async function POST(req) {
           // Handle button replies
           if (message.interactive?.button_reply?.payload) {
             const payload = message.interactive.button_reply.payload.toLowerCase();
-
             userText = payload;
             chatHistories[from].push({ role: 'user', content: userText });
 
             let aiReply = '';
 
-            // Handle meal time selection
             if (['lunch', 'tea', 'dinner'].includes(payload)) {
               aiReply = `Great! What time would you like to visit for ${payload}?`;
               chatHistories[from].push({ role: 'assistant', content: aiReply });
               await sendWhatsAppMessage(from, aiReply);
 
-              // Ask for location next with buttons
               const locationButtons = [
                 { title: 'Hennur', payload: 'hennur' },
                 { title: 'Sarjapur Road', payload: 'sarjapur' },
                 { title: 'Yeshwantpur', payload: 'yeshwantpur' },
               ];
               await sendInteractiveButtons(from, 'Please select a location:', locationButtons);
-
-              continue; // Done with this message
+              continue;
             }
 
-            // Handle location selection
             if (['hennur', 'sarjapur', 'yeshwantpur'].includes(payload)) {
               aiReply = `Great! You've chosen the ${payload.charAt(0).toUpperCase() + payload.slice(1)} location.\nLet's move on to your preferences.`;
               chatHistories[from].push({ role: 'assistant', content: aiReply });
               await sendWhatsAppMessage(from, aiReply);
 
-              // Ask preferences next with buttons
               const preferenceButtons = [
                 { title: 'Smoking', payload: 'smoking' },
                 { title: 'Non-Smoking', payload: 'non-smoking' },
@@ -116,11 +110,9 @@ export async function POST(req) {
                 { title: 'No Music', payload: 'no-music' },
               ];
               await sendInteractiveButtons(from, 'Do you have any preferences?', preferenceButtons);
-
               continue;
             }
 
-            // Handle preferences - smoking/music
             if (['smoking', 'non-smoking', 'music', 'no-music'].includes(payload)) {
               aiReply = `Thank you for letting me know your preference: ${payload.replace('-', ' ')}.\nDo you have any special needs or requests? (If none, please type 'No')`;
               chatHistories[from].push({ role: 'assistant', content: aiReply });
@@ -128,30 +120,20 @@ export async function POST(req) {
               continue;
             }
 
-            // For other button payloads, fallback polite message
             aiReply = `Thanks for your response. Please continue.`;
             chatHistories[from].push({ role: 'assistant', content: aiReply });
             await sendWhatsAppMessage(from, aiReply);
 
           } else {
-            // Normal text input from user (free text)
-
+            // Text message
             userText = message.text?.body;
             chatHistories[from].push({ role: 'user', content: userText });
 
-            // Call OpenRouter AI with full chat history
             const aiReply = await callOpenRouterAI(chatHistories[from]);
-
-            // Clean AI reply: remove internal reasoning or analysis per your prompt
-            // You said AI prompt forbids that, but just in case:
-            // You can sanitize or format here if needed
-
             chatHistories[from].push({ role: 'assistant', content: aiReply });
 
-            // Send AI reply text message
             await sendWhatsAppMessage(from, aiReply);
 
-            // If AI reply contains meal time options (case insensitive), send buttons
             if (/(lunch|tea|dinner)/i.test(aiReply)) {
               const mealButtons = [
                 { title: 'Lunch', payload: 'lunch' },
@@ -172,18 +154,18 @@ export async function POST(req) {
   }
 }
 
-// Send interactive buttons with consistent payload ids (all lowercase)
 async function sendInteractiveButtons(to, text, buttons) {
-  const formattedButtons = buttons.slice(0, 3).map(btn => ({
+  const formattedButtons = buttons.slice(0, 3).map((btn) => ({
     type: 'reply',
     reply: {
-      id: btn.payload.toLowerCase(), // stable, consistent id for WhatsApp button reply
-      title: btn.title,
+      id: btn.payload.toLowerCase(),
+      title: btn.title.slice(0, 20), // max 20 chars
     },
   }));
 
   const payload = {
     messaging_product: 'whatsapp',
+    recipient_type: 'individual',
     to,
     type: 'interactive',
     interactive: {
@@ -213,40 +195,10 @@ async function sendInteractiveButtons(to, text, buttons) {
   }
 }
 
-// Call OpenRouter API with full chat history
-async function callOpenRouterAI(chatHistory) {
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-oss-20b:free',
-        messages: chatHistory,
-        temperature: 0.6,
-        max_tokens: 1500,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error?.message || 'OpenRouter request failed');
-    }
-
-    return data.choices[0].message.content;
-  } catch (error) {
-    console.error('OpenRouter API error:', error.message);
-    return 'Sorry, there was an error processing your request. Please try again.';
-  }
-}
-
-// Send simple WhatsApp text message
 async function sendWhatsAppMessage(to, text) {
   const payload = {
     messaging_product: 'whatsapp',
+    recipient_type: 'individual',
     to,
     type: 'text',
     text: { body: text },
@@ -269,5 +221,33 @@ async function sendWhatsAppMessage(to, text) {
     }
   } catch (error) {
     console.error('Error sending WhatsApp message:', error.message || error);
+  }
+}
+
+async function callOpenRouterAI(chatHistory) {
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-20b:free',
+        messages: chatHistory,
+        temperature: 0.6,
+        max_tokens: 1500,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error?.message || 'OpenRouter API error');
+    }
+
+    return data.choices[0].message.content;
+  } catch (err) {
+    console.error('OpenRouter error:', err.message);
+    return 'Sorry, there was an error processing your request. Please try again.';
   }
 }
