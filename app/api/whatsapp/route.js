@@ -1,4 +1,4 @@
-// Next.js API handler: WhatsApp reservation flow with AI + proper button structure
+// Enhanced WhatsApp Reservation with AI + Button Flow + Error Logging
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -10,31 +10,12 @@ const steps = [
   { key: 'time', question: 'What time would you like to visit?', buttons: [] },
   { key: 'guests', question: 'How many guests (max 20)?', buttons: [] },
   { key: 'location', question: 'Which Kola location do you prefer?', buttons: ['Hennur', 'Sarjapur Road', 'Yeshwantpur'] },
-  { key: 'preferences', question: 'Any preferences? (Smoking, Music, or Special needs)', buttons: ['Smoking', 'Non‑Smoking', 'Music', 'No Music', 'None'] },
-  { key: 'date', question: 'Please choose a date (within 30 days):', buttons: [] },
-  { key: 'confirm', question: 'Here is your reservation summary. Confirm or Cancel?', buttons: ['Confirm', 'Cancel'] },
+  { key: 'preferences', question: 'Preferences? Smoking, Music, or special needs?', buttons: ['Smoking', 'Non‑Smoking', 'Music', 'No Music', 'None'] },
+  { key: 'date', question: 'Please pick a date (within 30 days):', buttons: [] },
+  { key: 'confirm', question: 'Reservation summary. Confirm or Cancel?', buttons: ['Confirm', 'Cancel'] },
 ];
 
 const sessions = {};
-
-const systemPrompt = `
-You are Zoya, a warm, friendly reservation assistant for Kola.
-
-Follow this flow:
-1. Ask if the reservation is for Lunch, Tea, or Dinner.
-2. Ask for preferred time.
-3. Ask for number of guests (max 20).
-4. Ask for location: Hennur, Sarjapur Road, or Yeshwantpur.
-5. Ask for preferences (Smoking, Music, or special needs).
-6. Ask for booking date within 30 days.
-7. Summarize and ask for confirmation.
-
-If user provides multiple details (e.g. "Dinner at 7 for 3 at Hennur tomorrow"), parse and skip steps accordingly.
-
-Return only JSON:
-{ "step": "<step_key>", "message": "<user visible text>", "buttons": ["Option1","Option2"] }
-`;
-
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
@@ -53,8 +34,11 @@ export async function POST(req) {
         const userInput = message.interactive?.button_reply?.title?.trim() || message.text?.body?.trim() || '';
 
         if (!sessions[from]) {
-          sessions[from] = { history: [{ role: 'system', content: systemPrompt }], reservation: {} };
+          sessions[from] = { history: [], reservation: {} };
+          await sendButtons(from, steps[0].question, steps[0].buttons);
+          continue;
         }
+
         const session = sessions[from];
         session.history.push({ role: 'user', content: userInput });
 
@@ -62,9 +46,11 @@ export async function POST(req) {
         session.history.push({ role: 'assistant', content: aiRes });
 
         let parsed;
-        try { parsed = JSON.parse(aiRes); }
-        catch {
-          await sendText(from, "Sorry, I didn't catch that. Could you rephrase?");
+        try {
+          parsed = JSON.parse(aiRes);
+        } catch (e) {
+          await sendText(from, "Sorry, I didn't understand that. Could you please rephrase?");
+          console.error('AI parse error:', e, aiRes);
           continue;
         }
 
@@ -74,7 +60,7 @@ export async function POST(req) {
         }
 
         if (step === 'guests' && parseInt(session.reservation.guests) > 20) {
-          await sendText(from, "Maximum is 20 guests. Please enter a valid number.");
+          await sendText(from, 'Max 20 guests allowed. Please enter a smaller number.');
           continue;
         }
 
@@ -109,14 +95,14 @@ function getNextDates(n) {
 }
 
 function generateSummary(res) {
-  return `Here’s your reservation:
+  return `Reservation Summary:
 
-• Meal: ${res.meal || '-'}
-• Time: ${res.time || '-'}
-• Guests: ${res.guests || '-'}
-• Location: ${res.location || '-'}
-• Preferences: ${res.preferences || '-'}
-• Date: ${res.date || '-'}
+Meal: ${res.meal || '-'}
+Time: ${res.time || '-'}
+Guests: ${res.guests || '-'}
+Location: ${res.location || '-'}
+Preferences: ${res.preferences || '-'}
+Date: ${res.date || '-'}
 
 Please Confirm or Cancel.`;
 }
@@ -128,37 +114,52 @@ async function callOpenRouterAI(history) {
     body: JSON.stringify({ model: 'openai/gpt-oss-20b:free', messages: history, temperature: 0.6, max_tokens: 500 }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || 'AI error');
-  return data.choices[0].message.content;
+  if (!res.ok) {
+    console.error('AI error:', data);
+    throw new Error('AI Service Error');
+  }
+  return data.choices[0]?.message?.content || '';
 }
 
 async function sendText(to, text) {
-  await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
+  const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'text', text: { body: text } }),
   });
+
+  const body = await res.json();
+  if (!res.ok) {
+    console.error('WhatsApp sendText error:', body);
+  } else {
+    console.log('WhatsApp sendText success:', body);
+  }
 }
 
 async function sendButtons(to, text, buttons) {
   const btns = buttons.slice(0, 3).map((title, idx) => ({
     type: 'reply',
-    reply: { id: `btn_${idx + 1}`, title },
+    reply: { id: `btn_${Date.now()}_${idx}`, title: title.slice(0, 20) }
   }));
 
-  await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
+  const payload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: { type: 'button', body: { text }, action: { buttons: btns } }
+  };
+
+  const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to,
-      type: 'interactive',
-      interactive: {
-        type: 'button',
-        body: { text },
-        action: { buttons: btns },
-      },
-    }),
+    body: JSON.stringify(payload),
   });
+
+  const body = await res.json();
+  if (!res.ok) {
+    console.error('WhatsApp sendButtons error:', body);
+  } else {
+    console.log('WhatsApp sendButtons success:', body);
+  }
 }
