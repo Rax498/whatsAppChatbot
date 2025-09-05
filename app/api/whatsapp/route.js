@@ -35,6 +35,7 @@ Return only JSON:
 { "step": "<step_key>", "message": "<user visible text>", "buttons": ["Option1","Option2"] }
 `;
 
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   if (searchParams.get('hub.mode') === 'subscribe' && searchParams.get('hub.verify_token') === VERIFY_TOKEN) {
