@@ -162,7 +162,7 @@ async function callOpenRouterAI(history) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'openai/gpt-4o',
+      model: 'openai/gpt-oss-20b:free',
       messages: history,
       temperature: 0.5,
       max_tokens: 800
