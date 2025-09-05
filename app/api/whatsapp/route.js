@@ -4,162 +4,136 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
 const systemPrompt = `
-You are Zoya, a kind and polite female reservation assistant for a restaurant called Kola.
+You are Zoya, a kind and polite female reservation assistant for Kola.
+Your job is to help users book a table with a friendly, human-like tone.
 
-Your job is to help users book a table by having a friendly, natural, and easy-to-read conversation.
-
-🟢 Speak like a warm human assistant.
-🔴 Do NOT include any internal reasoning or analysis in your replies.
-✅ ONLY reply with short, clear, and polite messages that a user would see in a real WhatsApp conversation.
-
-✨ Format your messages to be **readable** and **visually pleasant**:
-- Use **line breaks** to separate items.
-- Keep each option or step on a **separate line**.
-
-Ask one question at a time and follow this booking flow:
-
-1. Greet the user and introduce yourself.
-2. Ask if the reservation is for:
-   - Lunch
-   - Tea
-   - Dinner
-3. Ask for the **preferred time**.
-4. Ask for the **number of guests** (max guests=20).
-5. Ask the user to choose a **Kola location**:
-   - Hennur
-   - Sarjapur Road
-   - Yeshwantpur
-6. Ask about **preferences**:
-   - 🚬 Smoking or 🚭 Non-smoking
-   - 🎶 Music or 🔇 No music
-   - ♿ Any special needs
-7. Summarize and confirm all reservation details clearly.
-
-Always keep the tone friendly, respectful, and professional. Never break character as Zoya.
+Follow this booking flow, one step at a time:
+1. Greet
+2. Ask: Lunch, Tea, Dinner
+3. Ask: Preferred time
+4. Ask: Number of guests (max 20)
+5. Ask: Location (Hennur, Sarjapur Road, Yeshwantpur)
+6. Ask: Preferences (Smoking/Non, Music/No music, Special needs)
+7. Confirm all details
 `;
 
 const chatHistories = {};
 
-export async function GET(req) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const mode = searchParams.get('hub.mode');
-    const token = searchParams.get('hub.verify_token');
-    const challenge = searchParams.get('hub.challenge');
-
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      return new Response(challenge, { status: 200 });
-    } else {
-      return new Response('Forbidden', { status: 403 });
-    }
-  } catch (error) {
-    console.error('GET error:', error.message);
-    return new Response('Internal Server Error', { status: 500 });
-  }
-}
-
 export async function POST(req) {
-  try {
-    const body = await req.json();
-    const entry = body.entry || [];
+  const rawBody = await req.text();
+  console.log('[WEBHOOK] Raw incoming payload:\n', rawBody);
 
-    for (const e of entry) {
-      const changes = e.changes || [];
-      for (const change of changes) {
+  let body;
+  try {
+    body = JSON.parse(rawBody);
+  } catch (err) {
+    console.error('[ERROR] Invalid JSON:', err);
+    return new Response('Bad JSON', { status: 400 });
+  }
+
+  try {
+    for (const entry of body.entry || []) {
+      for (const change of entry.changes || []) {
         const messages = change.value?.messages || [];
         for (const message of messages) {
           const from = message.from;
-
           if (!chatHistories[from]) {
             chatHistories[from] = [{ role: 'system', content: systemPrompt }];
           }
 
-          let userText;
+          let userText = '';
 
-          // Handle button replies
-          if (message.interactive?.button_reply?.payload) {
-            const payload = message.interactive.button_reply.payload.toLowerCase();
-            userText = payload;
-            chatHistories[from].push({ role: 'user', content: userText });
+          // Handle button replies correctly
+          if (message.interactive?.type === 'button_reply') {
+            userText = message.interactive.button_reply.id;
+          } else if (message.text?.body) {
+            userText = message.text.body;
+          }
 
-            let aiReply = '';
+          if (!userText) {
+            console.log('[WARN] No user message text or button_reply found.');
+            continue;
+          }
 
-            if (['lunch', 'tea', 'dinner'].includes(payload)) {
-              aiReply = `Great! What time would you like to visit for ${payload}?`;
-              chatHistories[from].push({ role: 'assistant', content: aiReply });
-              await sendWhatsAppMessage(from, aiReply);
+          chatHistories[from].push({ role: 'user', content: userText });
 
-              const locationButtons = [
-                { title: 'Hennur', payload: 'hennur' },
-                { title: 'Sarjapur Road', payload: 'sarjapur' },
-                { title: 'Yeshwantpur', payload: 'yeshwantpur' },
-              ];
-              await sendInteractiveButtons(from, 'Please select a location:', locationButtons);
-              continue;
-            }
+          let aiReply = await callOpenRouterAI(chatHistories[from]);
+          chatHistories[from].push({ role: 'assistant', content: aiReply });
 
-            if (['hennur', 'sarjapur', 'yeshwantpur'].includes(payload)) {
-              aiReply = `Great! You've chosen the ${payload.charAt(0).toUpperCase() + payload.slice(1)} location.\nLet's move on to your preferences.`;
-              chatHistories[from].push({ role: 'assistant', content: aiReply });
-              await sendWhatsAppMessage(from, aiReply);
+          await sendWhatsAppMessage(from, aiReply);
 
-              const preferenceButtons = [
-                { title: 'Smoking', payload: 'smoking' },
-                { title: 'Non-Smoking', payload: 'non-smoking' },
-                { title: 'Music', payload: 'music' },
-                { title: 'No Music', payload: 'no-music' },
-              ];
-              await sendInteractiveButtons(from, 'Do you have any preferences?', preferenceButtons);
-              continue;
-            }
+          // Show meal option buttons if AI mentions them
+          if (/lunch|tea|dinner/i.test(aiReply)) {
+            await sendInteractiveButtons(from, 'Please choose one:', [
+              { title: 'Lunch', payload: 'lunch' },
+              { title: 'Tea', payload: 'tea' },
+              { title: 'Dinner', payload: 'dinner' },
+            ]);
+          }
 
-            if (['smoking', 'non-smoking', 'music', 'no-music'].includes(payload)) {
-              aiReply = `Thank you for letting me know your preference: ${payload.replace('-', ' ')}.\nDo you have any special needs or requests? (If none, please type 'No')`;
-              chatHistories[from].push({ role: 'assistant', content: aiReply });
-              await sendWhatsAppMessage(from, aiReply);
-              continue;
-            }
+          // Show location buttons if AI asks for location
+          if (/location/i.test(aiReply)) {
+            await sendInteractiveButtons(from, 'Which location do you prefer?', [
+              { title: 'Hennur', payload: 'Hennur' },
+              { title: 'Sarjapur Rd', payload: 'Sarjapur' },
+              { title: 'Yeshwantpur', payload: 'Yeshwantpur' },
+            ]);
+          }
 
-            aiReply = `Thanks for your response. Please continue.`;
-            chatHistories[from].push({ role: 'assistant', content: aiReply });
-            await sendWhatsAppMessage(from, aiReply);
-
-          } else {
-            // Text message
-            userText = message.text?.body;
-            chatHistories[from].push({ role: 'user', content: userText });
-
-            const aiReply = await callOpenRouterAI(chatHistories[from]);
-            chatHistories[from].push({ role: 'assistant', content: aiReply });
-
-            await sendWhatsAppMessage(from, aiReply);
-
-            if (/(lunch|tea|dinner)/i.test(aiReply)) {
-              const mealButtons = [
-                { title: 'Lunch', payload: 'lunch' },
-                { title: 'Tea', payload: 'tea' },
-                { title: 'Dinner', payload: 'dinner' },
-              ];
-              await sendInteractiveButtons(from, aiReply, mealButtons);
-            }
+          // Show preference options if AI asks for them
+          if (/smoking|music|special/i.test(aiReply)) {
+            await sendInteractiveButtons(from, 'Preferences?', [
+              { title: 'Smoking 🚬', payload: 'smoking' },
+              { title: 'Non-Smoking 🚭', payload: 'non-smoking' },
+              { title: 'Music 🎶', payload: 'music' },
+              { title: 'No Music 🔇', payload: 'no-music' },
+            ]);
           }
         }
       }
     }
 
     return new Response('EVENT_RECEIVED', { status: 200 });
-  } catch (error) {
-    console.error('POST error:', error.message);
+  } catch (err) {
+    console.error('[POST Handler Error]:', err.message);
     return new Response('Internal Server Error', { status: 500 });
   }
 }
 
+async function sendWhatsAppMessage(to, text) {
+  const payload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'text',
+    text: { body: text },
+  };
+
+  try {
+    const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error('[WhatsApp Text Error]', err);
+    }
+  } catch (err) {
+    console.error('[sendWhatsAppMessage Error]:', err.message);
+  }
+}
+
 async function sendInteractiveButtons(to, text, buttons) {
-  const formattedButtons = buttons.slice(0, 3).map((btn) => ({
+  const formattedButtons = buttons.slice(0, 3).map((btn, i) => ({
     type: 'reply',
     reply: {
-      id: btn.payload.toLowerCase(),
-      title: btn.title.slice(0, 20), // max 20 chars
+      id: btn.payload,
+      title: btn.title.slice(0, 20), // WhatsApp limit: 20 chars
     },
   }));
 
@@ -176,7 +150,7 @@ async function sendInteractiveButtons(to, text, buttons) {
   };
 
   try {
-    const res = await fetch(`https://graph.facebook.com/v16.0/${PHONE_NUMBER_ID}/messages`, {
+    const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${WHATSAPP_TOKEN}`,
@@ -187,44 +161,14 @@ async function sendInteractiveButtons(to, text, buttons) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      console.error('WhatsApp send buttons error:', err);
-      throw new Error(err.error?.message || 'WhatsApp API error sending buttons');
+      console.error('[WhatsApp Buttons Error]', err);
     }
-  } catch (error) {
-    console.error('Error sending buttons:', error.message || error);
+  } catch (err) {
+    console.error('[sendInteractiveButtons Error]:', err.message);
   }
 }
 
-async function sendWhatsAppMessage(to, text) {
-  const payload = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'text',
-    text: { body: text },
-  };
-
-  try {
-    const res = await fetch(`https://graph.facebook.com/v16.0/${PHONE_NUMBER_ID}/messages`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error('WhatsApp send message error:', err);
-      throw new Error(err.error?.message || 'WhatsApp API error sending message');
-    }
-  } catch (error) {
-    console.error('Error sending WhatsApp message:', error.message || error);
-  }
-}
-
-async function callOpenRouterAI(chatHistory) {
+async function callOpenRouterAI(history) {
   try {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -234,20 +178,22 @@ async function callOpenRouterAI(chatHistory) {
       },
       body: JSON.stringify({
         model: 'openai/gpt-oss-20b:free',
-        messages: chatHistory,
+        messages: history,
         temperature: 0.6,
-        max_tokens: 1500,
+        max_tokens: 1000,
       }),
     });
 
     const data = await res.json();
+
     if (!res.ok) {
-      throw new Error(data.error?.message || 'OpenRouter API error');
+      console.error('[OpenRouter Error]', data);
+      throw new Error(data.error?.message || 'AI API error');
     }
 
-    return data.choices[0].message.content;
+    return data.choices?.[0]?.message?.content || 'Zoya here! Something went wrong. Try again?';
   } catch (err) {
-    console.error('OpenRouter error:', err.message);
+    console.error('[AI Error]', err.message);
     return 'Sorry, there was an error processing your request. Please try again.';
   }
 }
