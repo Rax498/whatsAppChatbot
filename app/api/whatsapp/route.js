@@ -40,7 +40,7 @@ Your job is to help the user complete a reservation through these steps:
 1. Ask if it's for Lunch, Tea, or Dinner.
 2. Ask preferred time.
 3. Ask number of guests (max 20).
-4. Ask location: Hennur, Sarjapur Road, or Yeshwantpur.
+4. Ask location: Hennur, Sarjapur, or Yeshwantpur.
 5. Ask preferences: Smoking, Music, or special needs.
 6. Ask for a date within the next 30 days.
 7. Summarize and ask for confirmation.
@@ -166,7 +166,7 @@ async function callOpenRouterAI(history) {
       model: 'openai/gpt-oss-20b:free',
       messages: history,
       temperature: 0.6,
-      max_tokens: 500
+      
     })
   });
 
