@@ -197,6 +197,7 @@ export async function POST(req) {
           msg.text?.body?.trim() ||
           "";
 
+        // Initialize session if new
         if (!sessions[from]) {
           sessions[from] = {
             history: [{ role: "system", content: getSystemPrompt(from) }],
@@ -216,47 +217,48 @@ export async function POST(req) {
           continue;
         }
 
+        // If tool_calls are returned from the model
+        if (aiMessage.tool_calls && Array.isArray(aiMessage.tool_calls)) {
+          for (const toolCall of aiMessage.tool_calls) {
+            const toolFn = toolCall.function;
+            const toolName = toolFn.name;
+
+            let args;
+            try {
+              args = JSON.parse(toolFn.arguments);
+            } catch (err) {
+              console.error("Invalid arguments in tool_call:", err);
+              await sendText(from, "Something went wrong. Please try again.");
+              continue;
+            }
+
+            if (toolName === "sendButtons") {
+              console.log("Triggering sendButtons with:", args);
+              await sendButtons(args.to, args.text, args.buttons || []);
+            } else if (toolName === "sendText") {
+              console.log("Triggering sendText with:", args);
+              await sendText(args.to, args.text);
+            } else {
+              console.warn("Unknown tool requested:", toolName);
+              await sendText(from, "Unknown tool requested.");
+            }
+          }
+        } else {
+          // Fallback if no tool_calls
+          if (aiMessage.content) {
+            await sendText(from, aiMessage.content);
+          }
+        }
+
+        // Add assistant message back to history (excluding tool_call details)
         session.history.push({
           role: "assistant",
           content: aiMessage.content || "",
-          ...(aiMessage.tool_calls ? { tool_calls: aiMessage.tool_calls } : {}),
         });
-
-       if (aiMessage.tool_calls && Array.isArray(aiMessage.tool_calls)) {
-  for (const toolCall of aiMessage.tool_calls) {
-    const { function: toolFn } = toolCall;
-    const toolName = toolFn.name;
-
-    let args;
-    try {
-      args = JSON.parse(toolFn.arguments);
-    } catch (err) {
-      console.error("Failed to parse toolCall arguments:", err);
-      await sendText(from, "Oops! Something went wrong. Please try again.");
-      continue;
-    }
-
-    if (toolName === "sendButtons") {
-      console.log("Triggering sendButtons with:", args);
-      await sendButtons(args.to, args.text, args.buttons || []);
-    } else if (toolName === "sendText") {
-      console.log("Triggering sendText with:", args);
-      await sendText(args.to, args.text);
-    } else {
-      console.warn("Unknown tool requested:", toolName);
-      await sendText(from, "Sorry, I don't understand the request.");
-    }
-  }
-} else {
-  // Fallback to normal message
-  if (aiMessage.content) {
-    await sendText(from, aiMessage.content);
-  }
-}
-
       }
     }
   }
 
   return new Response("EVENT_RECEIVED", { status: 200 });
 }
+
