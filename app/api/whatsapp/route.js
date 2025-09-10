@@ -267,6 +267,7 @@ export async function POST(req) {
           // No tool call fallback
           if (aiMessage.content) {
             await sendText(from, aiMessage.content);
+console.log("triggred")
           }
         }
       }
