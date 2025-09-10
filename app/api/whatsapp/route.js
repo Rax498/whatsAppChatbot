@@ -52,7 +52,22 @@ Important:
 - Use buttons for these steps: meal, location, preferences, date.
 - For "date" step, suggest buttons like: ${futureDates.join(", ")}.
 
-You MUST respond ONLY with a tool call :
+You MUST respond ONLY with a tool call JSON in this format:
+
+{
+  "role": "assistant",
+  "tool_calls": [
+    {
+      "id": "call_123",
+      "type": "function",
+      "function": {
+        "name": "<sendButtons_or_sendText>",
+        "arguments": "{\"to\":\"${userPhone}\", \"text\":\"<message>\", \"buttons\":[\"button1\", \"button2\"]}"
+      }
+    }
+  ]
+}
+
 If sending text only, omit the "buttons" field or send an empty array.
 `.trim();
 }
@@ -72,7 +87,6 @@ async function callOpenRouterAI(history) {
             buttons: {
               type: "array",
               items: { type: "string" },
-              description: "List of button titles",
             },
           },
           required: ["to", "text"],
@@ -136,20 +150,19 @@ async function sendText(to, text) {
   });
 
   const info = await res.json();
-  if (!res.ok) console.error("sendText error:", info);
+  if (!res.ok) {
+    console.error("sendText error:", info);
+  }
 }
 
 async function sendButtons(to, text, buttons) {
-  const btns = (buttons || [])
-    .slice(0, 3)
-    .filter((title) => typeof title === "string" && title.trim() !== "")
-    .map((title, idx) => ({
-      type: "reply",
-      reply: {
-        id: `btn_${idx}_${Math.random().toString(36).substr(2, 5)}`,
-        title: title.slice(0, 20),
-      },
-    }));
+  const btns = buttons.slice(0, 3).map((title, idx) => ({
+    type: "reply",
+    reply: {
+      id: `btn_${idx}_${Math.random().toString(36).slice(2, 5)}`,
+      title: title.slice(0, 20),
+    },
+  }));
 
   const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
     method: "POST",
@@ -161,7 +174,6 @@ async function sendButtons(to, text, buttons) {
       messaging_product: "whatsapp",
       to,
       type: "interactive",
-      recipient_type: "individual",
       interactive: {
         type: "button",
         body: { text },
@@ -171,7 +183,9 @@ async function sendButtons(to, text, buttons) {
   });
 
   const info = await res.json();
-  if (!res.ok) console.error("sendButtons error:", info);
+  if (!res.ok) {
+    console.error("sendButtons error:", info);
+  }
 }
 
 export async function GET(req) {
@@ -197,7 +211,6 @@ export async function POST(req) {
           msg.text?.body?.trim() ||
           "";
 
-        // Initialize session if new
         if (!sessions[from]) {
           sessions[from] = {
             history: [{ role: "system", content: getSystemPrompt(from) }],
@@ -217,65 +230,48 @@ export async function POST(req) {
           continue;
         }
 
-        // If tool_calls are returned from the model
-        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
-  for (const toolCall of aiMessage.tool_calls) {
-    const toolFunc = toolCall.function;
-    if (!toolFunc || !toolFunc.name || !toolFunc.arguments) {
-      console.error("Malformed tool_call:", toolCall);
-      await sendText(from, "Oops, invalid tool call received.");
-      continue;
-    }
-
-    const toolName = toolFunc.name;
-
-    let args;
-    try {
-      args = JSON.parse(toolFunc.arguments);
-    } catch (err) {
-      console.error("Failed to parse tool_call arguments:", err, toolFunc.arguments);
-      await sendText(from, "Sorry, I couldn't understand the response.");
-      continue;
-    }
-
-    // Debug log to confirm parsing
-    console.log("Triggering", toolName, "with args:", args);
-
-    if (toolName === "sendButtons") {
-      if (!args.to || !args.text || !Array.isArray(args.buttons)) {
-        console.error("Invalid sendButtons args:", args);
-        await sendText(from, "Invalid buttons data.");
-        continue;
-      }
-      await sendButtons(args.to, args.text, args.buttons);
-    } else if (toolName === "sendText") {
-      if (!args.to || !args.text) {
-        console.error("Invalid sendText args:", args);
-        await sendText(from, "Invalid text data.");
-        continue;
-      }
-      await sendText(args.to, args.text);
-    } else {
-      console.error("Unknown tool name:", toolName);
-      await sendText(from, "Sorry, I don't understand that request.");
-    }
-  }
-} else {
-  if (aiMessage.content) {
-    await sendText(from, aiMessage.content);
-  }
-}
-
-
-        // Add assistant message back to history (excluding tool_call details)
+        // Add assistant message to history
         session.history.push({
           role: "assistant",
           content: aiMessage.content || "",
+          ...(aiMessage.tool_calls ? { tool_calls: aiMessage.tool_calls } : {}),
         });
+
+        // 🔧 TOOL CALL HANDLING
+        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+          for (const toolCall of aiMessage.tool_calls) {
+            const toolName = toolCall.function.name;
+            let args;
+
+            try {
+              args = JSON.parse(toolCall.function.arguments);
+            } catch (err) {
+              console.error("Invalid tool_call arguments:", err, toolCall.function.arguments);
+              await sendText(from, "Invalid data received. Please try again.");
+              continue;
+            }
+
+            // Force overwrite 'to' with actual user phone number
+            args.to = from;
+            console.log("Triggering", toolName, "with args:", args);
+
+            if (toolName === "sendButtons") {
+              await sendButtons(args.to, args.text, args.buttons || []);
+            } else if (toolName === "sendText") {
+              await sendText(args.to, args.text);
+            } else {
+              await sendText(from, "Unknown action requested.");
+            }
+          }
+        } else {
+          // No tool call fallback
+          if (aiMessage.content) {
+            await sendText(from, aiMessage.content);
+          }
+        }
       }
     }
   }
 
   return new Response("EVENT_RECEIVED", { status: 200 });
 }
-
