@@ -218,37 +218,54 @@ export async function POST(req) {
         }
 
         // If tool_calls are returned from the model
-        if (aiMessage.tool_calls && Array.isArray(aiMessage.tool_calls)) {
-          for (const toolCall of aiMessage.tool_calls) {
-            const toolFn = toolCall.function;
-            const toolName = toolFn.name;
+        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+  for (const toolCall of aiMessage.tool_calls) {
+    const toolFunc = toolCall.function;
+    if (!toolFunc || !toolFunc.name || !toolFunc.arguments) {
+      console.error("Malformed tool_call:", toolCall);
+      await sendText(from, "Oops, invalid tool call received.");
+      continue;
+    }
 
-            let args;
-            try {
-              args = JSON.parse(toolFn.arguments);
-            } catch (err) {
-              console.error("Invalid arguments in tool_call:", err);
-              await sendText(from, "Something went wrong. Please try again.");
-              continue;
-            }
+    const toolName = toolFunc.name;
 
-            if (toolName === "sendButtons") {
-              console.log("Triggering sendButtons with:", args);
-              await sendButtons(args.to, args.text, args.buttons || []);
-            } else if (toolName === "sendText") {
-              console.log("Triggering sendText with:", args);
-              await sendText(args.to, args.text);
-            } else {
-              console.warn("Unknown tool requested:", toolName);
-              await sendText(from, "Unknown tool requested.");
-            }
-          }
-        } else {
-          // Fallback if no tool_calls
-          if (aiMessage.content) {
-            await sendText(from, aiMessage.content);
-          }
-        }
+    let args;
+    try {
+      args = JSON.parse(toolFunc.arguments);
+    } catch (err) {
+      console.error("Failed to parse tool_call arguments:", err, toolFunc.arguments);
+      await sendText(from, "Sorry, I couldn't understand the response.");
+      continue;
+    }
+
+    // Debug log to confirm parsing
+    console.log("Triggering", toolName, "with args:", args);
+
+    if (toolName === "sendButtons") {
+      if (!args.to || !args.text || !Array.isArray(args.buttons)) {
+        console.error("Invalid sendButtons args:", args);
+        await sendText(from, "Invalid buttons data.");
+        continue;
+      }
+      await sendButtons(args.to, args.text, args.buttons);
+    } else if (toolName === "sendText") {
+      if (!args.to || !args.text) {
+        console.error("Invalid sendText args:", args);
+        await sendText(from, "Invalid text data.");
+        continue;
+      }
+      await sendText(args.to, args.text);
+    } else {
+      console.error("Unknown tool name:", toolName);
+      await sendText(from, "Sorry, I don't understand that request.");
+    }
+  }
+} else {
+  if (aiMessage.content) {
+    await sendText(from, aiMessage.content);
+  }
+}
+
 
         // Add assistant message back to history (excluding tool_call details)
         session.history.push({
