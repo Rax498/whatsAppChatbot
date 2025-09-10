@@ -31,6 +31,7 @@ function generateSummary(res) {
 Please Confirm or Cancel.`;
 }
 
+// System prompt instructing AI to call functions, NOT return JSON or plain text directly
 function getSystemPrompt() {
   const futureDates = getNextDates(5);
   return `
@@ -45,51 +46,59 @@ Your job is to help the user complete a reservation through these steps:
 6. Ask for a date within the next 30 days.
 7. Summarize and ask for confirmation.
 
-Important Rules:
-- Always track which steps have been completed.
-- If the user asks a question or gives unrelated input, answer it briefly, then return to the next pending step.
-- Do not repeat completed steps.
-- Use buttons when possible for these steps: meal, location, preferences, date.
-- For the "date" step, suggest buttons like: ${futureDates.join(", ")}.
+Important:
+- You MUST respond ONLY by calling one of these functions: sendButtons or sendText.
+- Never respond with plain text or JSON.
+- Use sendButtons for steps: meal, location, preferences, date (provide buttons for the user to click).
+- Use sendText only for simple messages without buttons.
+- For "date" step, use buttons with these dates: ${futureDates.join(", ")}.
 
-Always respond ONLY in JSON keys: "step", "message", "buttons" when not calling a function.`;
+Return function calls exactly like this format:
+
+{
+  "role": "assistant",
+  "function_call": {
+    "name": "sendButtons",
+    "arguments": "{\"to\":\"<user_phone>\",\"text\":\"<message>\",\"buttons\":[\"button1\",\"button2\"]}"
+  }
 }
 
-async function callOpenRouterAI(history) {
-  const tools = [
-    {
-      type: "function",
-      function: {
-        name: "sendButtons",
-        description: "Send WhatsApp buttons to user",
-        parameters: {
-          type: "object",
-          properties: {
-            to: { type: "string" },
-            text: { type: "string" },
-            buttons: { type: "array", items: { type: "string" } },
-          },
-          required: ["to", "text", "buttons"],
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "sendText",
-        description: "Send plain WhatsApp text message",
-        parameters: {
-          type: "object",
-          properties: {
-            to: { type: "string" },
-            text: { type: "string" },
-          },
-          required: ["to", "text"],
-        },
-      },
-    },
-  ];
+Always follow these rules strictly.
+`;
+}
 
+const functions = [
+  {
+    name: "sendButtons",
+    description: "Send WhatsApp buttons to user",
+    parameters: {
+      type: "object",
+      properties: {
+        to: { type: "string" },
+        text: { type: "string" },
+        buttons: {
+          type: "array",
+          items: { type: "string" }
+        }
+      },
+      required: ["to", "text", "buttons"],
+    },
+  },
+  {
+    name: "sendText",
+    description: "Send plain WhatsApp text message",
+    parameters: {
+      type: "object",
+      properties: {
+        to: { type: "string" },
+        text: { type: "string" },
+      },
+      required: ["to", "text"],
+    },
+  },
+];
+
+async function callOpenRouterAI(history) {
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -100,8 +109,8 @@ async function callOpenRouterAI(history) {
       model: "google/gemini-2.0-flash-exp:free",
       messages: history,
       temperature: 0.6,
-      tools,
-      tool_choice: "auto",
+      functions,
+      function_call: "auto",
     }),
   });
 
@@ -110,11 +119,12 @@ async function callOpenRouterAI(history) {
     console.error("OpenRouter AI error:", data);
     throw new Error("AI call failed");
   }
+
   return data.choices[0].message;
 }
 
 async function sendText(to, text) {
-  await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
+  const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${WHATSAPP_TOKEN}`,
@@ -127,6 +137,11 @@ async function sendText(to, text) {
       text: { body: text },
     }),
   });
+
+  if (!res.ok) {
+    const err = await res.json();
+    console.error("sendText error:", err);
+  }
 }
 
 async function sendButtons(to, text, buttons) {
@@ -135,7 +150,7 @@ async function sendButtons(to, text, buttons) {
     reply: { id: `btn_${Date.now()}_${idx}`, title: title.slice(0, 20) },
   }));
 
-  await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
+  const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${WHATSAPP_TOKEN}`,
@@ -153,6 +168,11 @@ async function sendButtons(to, text, buttons) {
       },
     }),
   });
+
+  if (!res.ok) {
+    const err = await res.json();
+    console.error("sendButtons error:", err);
+  }
 }
 
 export async function GET(req) {
@@ -168,6 +188,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   const body = await req.json();
+
   for (const entry of body.entry || []) {
     for (const change of entry.changes || []) {
       for (const msg of change.value?.messages || []) {
@@ -201,11 +222,16 @@ export async function POST(req) {
           const { name, arguments: argsStr } = message.function_call;
           const args = JSON.parse(argsStr);
 
-          if (name === "sendButtons") await sendButtons(args.to, args.text, args.buttons);
-          else if (name === "sendText") await sendText(args.to, args.text);
+          if (name === "sendButtons") {
+            await sendButtons(args.to, args.text, args.buttons);
+          } else if (name === "sendText") {
+            await sendText(args.to, args.text);
+          }
 
+          // Record tool call success for AI context
           session.history.push({ role: "tool", name, content: "OK" });
         } else {
+          // In case AI ignores instruction (should not happen with good prompt)
           await sendText(from, message.content);
         }
       }
