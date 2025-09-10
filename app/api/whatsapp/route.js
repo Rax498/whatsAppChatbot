@@ -4,29 +4,29 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
 const sessions = {};
-const requiredSteps = ['meal', 'time', 'guests', 'location', 'preferences', 'date'];
+const requiredSteps = ["meal", "time", "guests", "location", "preferences", "date"];
 
 function getNextDates(n) {
   return Array.from({ length: n }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    return d.toISOString().split('T')[0];
+    return d.toISOString().split("T")[0];
   });
 }
 
 function isReservationComplete(res) {
-  return requiredSteps.every(k => res[k]);
+  return requiredSteps.every((k) => res[k]);
 }
 
 function generateSummary(res) {
   return `Here’s your reservation:
 
-• Meal: ${res.meal || '-'}
-• Time: ${res.time || '-'}
-• Guests: ${res.guests || '-'}
-• Location: ${res.location || '-'}
-• Preferences: ${res.preferences || '-'}
-• Date: ${res.date || '-'}
+• Meal: ${res.meal || "-"}
+• Time: ${res.time || "-"}
+• Guests: ${res.guests || "-"}
+• Location: ${res.location || "-"}
+• Preferences: ${res.preferences || "-"}
+• Date: ${res.date || "-"}
 
 Please Confirm or Cancel.`;
 }
@@ -50,23 +50,120 @@ Important Rules:
 - If the user asks a question or gives unrelated input, answer it briefly, then return to the next pending step.
 - Do not repeat completed steps.
 - Use buttons when possible for these steps: meal, location, preferences, date.
-- For the "date" step, suggest buttons like: ${futureDates.join(', ')}.
+- For the "date" step, suggest buttons like: ${futureDates.join(", ")}.
 
-Always respond ONLY in this JSON format:
-{
-  "step": "<current_or_next_step_key>",
-  "message": "<message to send>",
-  "buttons": ["optional", "button", "list"]
+Always respond ONLY in JSON keys: "step", "message", "buttons" when not calling a function.`;
 }
-  `.trim();
+
+async function callOpenRouterAI(history) {
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "sendButtons",
+        description: "Send WhatsApp buttons to user",
+        parameters: {
+          type: "object",
+          properties: {
+            to: { type: "string" },
+            text: { type: "string" },
+            buttons: { type: "array", items: { type: "string" } },
+          },
+          required: ["to", "text", "buttons"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "sendText",
+        description: "Send plain WhatsApp text message",
+        parameters: {
+          type: "object",
+          properties: {
+            to: { type: "string" },
+            text: { type: "string" },
+          },
+          required: ["to", "text"],
+        },
+      },
+    },
+  ];
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.0-flash-exp:free",
+      messages: history,
+      temperature: 0.6,
+      tools,
+      tool_choice: "auto",
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    console.error("OpenRouter AI error:", data);
+    throw new Error("AI call failed");
+  }
+  return data.choices[0].message;
+}
+
+async function sendText(to, text) {
+  await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { body: text },
+    }),
+  });
+}
+
+async function sendButtons(to, text, buttons) {
+  const btns = buttons.slice(0, 3).map((title, idx) => ({
+    type: "reply",
+    reply: { id: `btn_${Date.now()}_${idx}`, title: title.slice(0, 20) },
+  }));
+
+  await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "interactive",
+      recipient_type: "individual",
+      interactive: {
+        type: "button",
+        body: { text },
+        action: { buttons: btns },
+      },
+    }),
+  });
 }
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  if (searchParams.get('hub.mode') === 'subscribe' && searchParams.get('hub.verify_token') === VERIFY_TOKEN) {
-    return new Response(searchParams.get('hub.challenge'), { status: 200 });
+  if (
+    searchParams.get("hub.mode") === "subscribe" &&
+    searchParams.get("hub.verify_token") === VERIFY_TOKEN
+  ) {
+    return new Response(searchParams.get("hub.challenge"), { status: 200 });
   }
-  return new Response('Forbidden', { status: 403 });
+  return new Response("Forbidden", { status: 403 });
 }
 
 export async function POST(req) {
@@ -75,156 +172,45 @@ export async function POST(req) {
     for (const change of entry.changes || []) {
       for (const msg of change.value?.messages || []) {
         const from = msg.from;
-        const userInput = msg.interactive?.button_reply?.title?.trim() || msg.text?.body?.trim() || '';
+        const userInput =
+          msg.interactive?.button_reply?.title?.trim() ||
+          msg.text?.body?.trim() ||
+          "";
 
-        // Initialize session
         if (!sessions[from]) {
           sessions[from] = {
-            history: [{ role: 'system', content: getSystemPrompt() }],
-            reservation: {}
+            history: [{ role: "system", content: getSystemPrompt() }],
+            reservation: {},
           };
         }
 
         const session = sessions[from];
-        session.history.push({ role: 'user', content: userInput });
+        session.history.push({ role: "user", content: userInput });
 
-        let aiRes;
+        let message;
         try {
-          aiRes = await callOpenRouterAI(session.history);
-          session.history.push({ role: 'assistant', content: aiRes });
+          message = await callOpenRouterAI(session.history);
         } catch (e) {
-          await sendText(from, "Sorry, I'm having trouble understanding. Please try again.");
+          await sendText(from, "Sorry, I’m having trouble understanding. Please try again.");
           continue;
         }
 
-        let parsed;
-        try {
-          parsed = JSON.parse(aiRes);
-        } catch (e) {
-          await sendText(from, "Oops! That didn't work. Could you rephrase that?");
-          console.error("AI JSON parse error:", e, aiRes);
-          continue;
-        }
+        session.history.push(message);
 
-        const { step, message: msgText, buttons = [] } = parsed;
+        if (message.function_call) {
+          const { name, arguments: argsStr } = message.function_call;
+          const args = JSON.parse(argsStr);
 
-        // Save response only if not already answered
-        if (step && step !== 'confirm' && !session.reservation[step]) {
-          session.reservation[step] = userInput;
-        }
+          if (name === "sendButtons") await sendButtons(args.to, args.text, args.buttons);
+          else if (name === "sendText") await sendText(args.to, args.text);
 
-        // Handle guests over 20
-        if (step === 'guests' && parseInt(session.reservation.guests) > 20) {
-          await sendText(from, 'Maximum is 20 guests. Please enter a valid number.');
-          delete session.reservation.guests;
-          continue;
-        }
-
-        // If reservation is complete, send summary
-        if (isReservationComplete(session.reservation)) {
-          const summary = generateSummary(session.reservation);
-          await sendButtons(from, summary, ['Confirm', 'Cancel']);
-          continue;
-        }
-
-        // Handle confirmation
-        if (step === 'confirm') {
-          const action = userInput.toLowerCase();
-          if (action === 'confirm') {
-            await sendText(from, '✅ Your reservation is confirmed. Thank you!');
-          } else if (action === 'cancel') {
-            await sendText(from, '❌ Reservation cancelled. Let me know if you want to start again.');
-          } else {
-            await sendButtons(from, msgText, ['Confirm', 'Cancel']);
-            continue;
-          }
-          delete sessions[from];
-          continue;
-        }
-
-        // Send message with or without buttons
-        if (buttons.length > 0) {
-          await sendButtons(from, msgText, buttons);
+          session.history.push({ role: "tool", name, content: "OK" });
         } else {
-          await sendText(from, msgText);
+          await sendText(from, message.content);
         }
       }
     }
   }
 
-  return new Response('EVENT_RECEIVED', { status: 200 });
-}
-
-async function callOpenRouterAI(history) {
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'openai/gpt-oss-20b:free',
-      messages: history,
-      temperature: 0.6,
-      
-    })
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    console.error('OpenRouter AI error:', data);
-    throw new Error('AI call failed');
-  }
-
-  return data.choices[0]?.message?.content || '';
-}
-
-async function sendText(to, text) {
-  const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to,
-      type: 'text',
-      text: { body: text }
-    })
-  });
-
-  const info = await res.json();
-  if (!res.ok) console.error('sendText error:', info);
-}
-
-async function sendButtons(to, text, buttons) {
-  const btns = buttons.slice(0, 3).map((title, idx) => ({
-    type: 'reply',
-    reply: { id: `btn_${Date.now()}_${idx}`, title: title.slice(0, 20) }
-  }));
-
-  const payload = {
-    messaging_product: 'whatsapp',
-    to,
-    type: 'interactive',
-    recipient_type: 'individual',
-    interactive: {
-      type: 'button',
-      body: { text },
-      action: { buttons: btns }
-    }
-  };
-
-  const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
-
-  const info = await res.json();
-  if (!res.ok) console.error('sendButtons error:', info);
+  return new Response("EVENT_RECEIVED", { status: 200 });
 }
