@@ -52,22 +52,7 @@ Important:
 - Use buttons for these steps: meal, location, preferences, date.
 - For "date" step, suggest buttons like: ${futureDates.join(", ")}.
 
-You MUST respond ONLY with a tool call JSON in this format:
-
-{
-  "role": "assistant",
-  "tool_calls": [
-    {
-      "id": "call_123",
-      "type": "function",
-      "function": {
-        "name": "<sendButtons_or_sendText>",
-        "arguments": "{\"to\":\"${userPhone}\", \"text\":\"<message>\", \"buttons\":[\"button1\", \"button2\"]}"
-      }
-    }
-  ]
-}
-
+You MUST respond ONLY with a tool call :
 If sending text only, omit the "buttons" field or send an empty array.
 `.trim();
 }
@@ -237,32 +222,38 @@ export async function POST(req) {
           ...(aiMessage.tool_calls ? { tool_calls: aiMessage.tool_calls } : {}),
         });
 
-        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
-          for (const toolCall of aiMessage.tool_calls) {
-            const toolName = toolCall.function.name;
+       if (aiMessage.tool_calls && Array.isArray(aiMessage.tool_calls)) {
+  for (const toolCall of aiMessage.tool_calls) {
+    const { function: toolFn } = toolCall;
+    const toolName = toolFn.name;
 
-            let args;
-            try {
-              args = JSON.parse(toolCall.function.arguments);
-            } catch (err) {
-              console.error("Invalid arguments in tool_call:", err);
-              await sendText(from, "Something went wrong. Please try again.");
-              continue;
-            }
+    let args;
+    try {
+      args = JSON.parse(toolFn.arguments);
+    } catch (err) {
+      console.error("Failed to parse toolCall arguments:", err);
+      await sendText(from, "Oops! Something went wrong. Please try again.");
+      continue;
+    }
 
-            if (toolName === "sendButtons") {
-              await sendButtons(args.to, args.text, args.buttons || []);
-            } else if (toolName === "sendText") {
-              await sendText(args.to, args.text);
-            } else {
-              await sendText(from, "Unknown tool requested.");
-            }
-          }
-        } else {
-          if (aiMessage.content) {
-            await sendText(from, aiMessage.content);
-          }
-        }
+    if (toolName === "sendButtons") {
+      console.log("Triggering sendButtons with:", args);
+      await sendButtons(args.to, args.text, args.buttons || []);
+    } else if (toolName === "sendText") {
+      console.log("Triggering sendText with:", args);
+      await sendText(args.to, args.text);
+    } else {
+      console.warn("Unknown tool requested:", toolName);
+      await sendText(from, "Sorry, I don't understand the request.");
+    }
+  }
+} else {
+  // Fallback to normal message
+  if (aiMessage.content) {
+    await sendText(from, aiMessage.content);
+  }
+}
+
       }
     }
   }
