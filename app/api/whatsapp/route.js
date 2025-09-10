@@ -31,7 +31,6 @@ function generateSummary(res) {
 Please Confirm or Cancel.`;
 }
 
-// System prompt instructing AI to call functions, NOT return JSON or plain text directly
 function getSystemPrompt() {
   const futureDates = getNextDates(5);
   return `
@@ -47,58 +46,65 @@ Your job is to help the user complete a reservation through these steps:
 7. Summarize and ask for confirmation.
 
 Important:
-- You MUST respond ONLY by calling one of these functions: sendButtons or sendText.
-- Never respond with plain text or JSON.
-- Use sendButtons for steps: meal, location, preferences, date (provide buttons for the user to click).
-- Use sendText only for simple messages without buttons.
-- For "date" step, use buttons with these dates: ${futureDates.join(", ")}.
+- Always track completed steps.
+- If user input is unrelated, respond briefly then return to next pending step.
+- Do not repeat completed steps.
+- Use buttons for these steps: meal, location, preferences, date.
+- For "date" step, suggest buttons like: ${futureDates.join(", ")}.
 
-Return function calls exactly like this format:
+You MUST respond ONLY with a function call JSON in this format:
 
 {
   "role": "assistant",
   "function_call": {
-    "name": "sendButtons",
-    "arguments": "{\"to\":\"<user_phone>\",\"text\":\"<message>\",\"buttons\":[\"button1\",\"button2\"]}"
+    "name": "<sendButtons_or_sendText>",
+    "arguments": "{\"to\":\"<user_phone>\", \"text\":\"<message>\", \"buttons\":[\"button1\", \"button2\"]}"
   }
 }
 
-Always follow these rules strictly.
-`;
+If sending text only, omit the "buttons" field or send an empty array.
+`.trim();
 }
 
-const functions = [
-  {
-    name: "sendButtons",
-    description: "Send WhatsApp buttons to user",
-    parameters: {
-      type: "object",
-      properties: {
-        to: { type: "string" },
-        text: { type: "string" },
-        buttons: {
-          type: "array",
-          items: { type: "string" }
-        }
-      },
-      required: ["to", "text", "buttons"],
-    },
-  },
-  {
-    name: "sendText",
-    description: "Send plain WhatsApp text message",
-    parameters: {
-      type: "object",
-      properties: {
-        to: { type: "string" },
-        text: { type: "string" },
-      },
-      required: ["to", "text"],
-    },
-  },
-];
-
 async function callOpenRouterAI(history) {
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "sendButtons",
+        description: "Send WhatsApp buttons to user",
+        parameters: {
+          type: "object",
+          properties: {
+            to: { type: "string" },
+            text: { type: "string" },
+            buttons: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of button titles",
+            },
+          },
+          required: ["to", "text"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "sendText",
+        description: "Send plain WhatsApp text message",
+        parameters: {
+          type: "object",
+          properties: {
+            to: { type: "string" },
+            text: { type: "string" },
+          },
+          required: ["to", "text"],
+        },
+      },
+    },
+  ];
+
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -109,8 +115,8 @@ async function callOpenRouterAI(history) {
       model: "google/gemini-2.0-flash-exp:free",
       messages: history,
       temperature: 0.6,
-      functions,
-      function_call: "auto",
+      tools,
+      tool_choice: "auto",
     }),
   });
 
@@ -138,17 +144,17 @@ async function sendText(to, text) {
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.json();
-    console.error("sendText error:", err);
-  }
+  const info = await res.json();
+  if (!res.ok) console.error("sendText error:", info);
 }
 
 async function sendButtons(to, text, buttons) {
-  const btns = buttons.slice(0, 3).map((title, idx) => ({
-    type: "reply",
-    reply: { id: `btn_${Date.now()}_${idx}`, title: title.slice(0, 20) },
-  }));
+  const btns = buttons
+    .slice(0, 3)
+    .map((title, idx) => ({
+      type: "reply",
+      reply: { id: `btn_${Date.now()}_${idx}`, title: title.slice(0, 20) },
+    }));
 
   const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
     method: "POST",
@@ -169,10 +175,8 @@ async function sendButtons(to, text, buttons) {
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.json();
-    console.error("sendButtons error:", err);
-  }
+  const info = await res.json();
+  if (!res.ok) console.error("sendButtons error:", info);
 }
 
 export async function GET(req) {
@@ -208,32 +212,57 @@ export async function POST(req) {
         const session = sessions[from];
         session.history.push({ role: "user", content: userInput });
 
-        let message;
+        let aiMessage;
         try {
-          message = await callOpenRouterAI(session.history);
+          aiMessage = await callOpenRouterAI(session.history);
         } catch (e) {
           await sendText(from, "Sorry, I’m having trouble understanding. Please try again.");
           continue;
         }
 
-        session.history.push(message);
+        session.history.push(aiMessage);
 
-        if (message.function_call) {
-          const { name, arguments: argsStr } = message.function_call;
-          const args = JSON.parse(argsStr);
+        // Handle function calls from AI
+        if (aiMessage.function_call) {
+          const functionCalls = Array.isArray(aiMessage.function_call)
+            ? aiMessage.function_call
+            : [aiMessage.function_call];
 
-          if (name === "sendButtons") {
-            await sendButtons(args.to, args.text, args.buttons);
-          } else if (name === "sendText") {
-            await sendText(args.to, args.text);
+          for (const funcCall of functionCalls) {
+            const { name, arguments: argsStr } = funcCall;
+            let args;
+            try {
+              args = JSON.parse(argsStr);
+            } catch (err) {
+              console.error("Failed to parse function_call arguments", err);
+              await sendText(from, "Oops! Something went wrong. Please try again.");
+              continue;
+            }
+
+            if (name === "sendButtons") {
+              await sendButtons(args.to, args.text, args.buttons || []);
+            } else if (name === "sendText") {
+              await sendText(args.to, args.text);
+            } else {
+              await sendText(from, "Sorry, I don't understand the request.");
+            }
+
+            // Add tool call to history for context
+            session.history.push({ role: "tool", name, content: "OK" });
           }
-
-          // Record tool call success for AI context
-          session.history.push({ role: "tool", name, content: "OK" });
         } else {
-          // In case AI ignores instruction (should not happen with good prompt)
-          await sendText(from, message.content);
+          // Fallback: send plain text if AI ignores instruction (should not happen)
+          await sendText(from, aiMessage.content);
         }
+
+        // Save user input to reservation if step is present and not confirmed yet
+        // This depends on your AI design — if your AI returns step keys, you can implement here.
+        // For example:
+        // if (aiMessage.step && aiMessage.step !== "confirm" && !session.reservation[aiMessage.step]) {
+        //   session.reservation[aiMessage.step] = userInput;
+        // }
+
+        // You can add your reservation complete/confirmation logic here if needed.
       }
     }
   }
