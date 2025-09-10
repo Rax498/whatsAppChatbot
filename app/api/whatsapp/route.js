@@ -52,21 +52,7 @@ Important:
 - Use buttons for these steps: meal, location, preferences, date.
 - For "date" step, suggest buttons like: ${futureDates.join(", ")}.
 
-You MUST respond ONLY with a tool call JSON in this format:
-
-{
-  "role": "assistant",
-  "tool_calls": [
-    {
-      "id": "call_123",
-      "type": "function",
-      "function": {
-        "name": "<sendButtons_or_sendText>",
-        "arguments": "{\"to\":\"${userPhone}\", \"text\":\"<message>\", \"buttons\":[\"button1\", \"button2\"]}"
-      }
-    }
-  ]
-}
+You MUST respond ONLY with a tool call
 
 If sending text only, omit the "buttons" field or send an empty array.
 `.trim();
