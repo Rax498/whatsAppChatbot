@@ -184,7 +184,6 @@ export async function GET(req) {
   }
   return new Response("Forbidden", { status: 403 });
 }
-
 export async function POST(req) {
   const body = await req.json();
 
@@ -194,7 +193,8 @@ export async function POST(req) {
         const from = msg.from;
         const userInput =
           msg.interactive?.button_reply?.title?.trim() ||
-          msg.text?.body?.trim() || "";
+          msg.text?.body?.trim() ||
+          "";
 
         if (!sessions[from]) {
           sessions[from] = {
@@ -206,23 +206,31 @@ export async function POST(req) {
         const session = sessions[from];
         session.history.push({ role: "user", content: userInput });
 
-        const aiMessage = await callOpenRouterAI(session.history);
+        let aiMessage;
+        try {
+          aiMessage = await callOpenRouterAI(session.history);
+        } catch (e) {
+          console.error("AI Error:", e);
+          await sendText(from, "Sorry, I'm having trouble right now. Please try again.");
+          continue;
+        }
 
-        session.history.push({
-          role: "assistant",
-          content: aiMessage.content || "",
-          ...(aiMessage.tool_calls ? { tool_calls: aiMessage.tool_calls } : {})
-        });
+        session.history.push({ role: "assistant", content: aiMessage.content || "" });
 
         if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
           for (const toolCall of aiMessage.tool_calls) {
             const toolName = toolCall.function.name;
             const args = JSON.parse(toolCall.function.arguments);
 
+            // Fix 'user' placeholder if present
+            if (args.to === "user") args.to = from;
+
             if (toolName === "sendButtons") {
               await sendButtons(args.to, args.text, args.buttons || []);
             } else if (toolName === "sendText") {
               await sendText(args.to, args.text);
+            } else {
+              await sendText(from, "Unknown tool requested.");
             }
           }
         } else if (aiMessage.content) {
