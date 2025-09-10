@@ -239,29 +239,26 @@ export async function POST(req) {
 
         if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
           for (const toolCall of aiMessage.tool_calls) {
-            const { name, arguments: argsStr } = toolCall.function;
-            let args;
-            try {
-              args = typeof argsStr === "string" ? JSON.parse(argsStr) : argsStr;
-            } catch (err) {
-              console.error("Failed to parse tool arguments:", err);
-              await sendText(from, "Oops! Something went wrong. Please try again.");
-              continue;
-            }
+           
 
-            if (name === "sendButtons") {
+  const toolName = toolCall.function.name;
+  const args = JSON.parse(toolCall.function.arguments);
+            console.log(args)
+
+
+} 
+            
+        
+
+            if (toolName === "sendButtons") {
               await sendButtons(args.to, args.text, args.buttons || []);
-            } else if (name === "sendText") {
+            } else if (toolName === "sendText") {
               await sendText(args.to, args.text);
             } else {
               await sendText(from, "Unknown tool requested.");
             }
 
-            session.history.push({
-              role: "tool",
-              name,
-              content: "OK",
-            });
+          
           }
         } else {
           if (aiMessage.content) {
