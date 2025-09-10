@@ -194,8 +194,7 @@ export async function POST(req) {
         const from = msg.from;
         const userInput =
           msg.interactive?.button_reply?.title?.trim() ||
-          msg.text?.body?.trim() ||
-          "";
+          msg.text?.body?.trim() || "";
 
         if (!sessions[from]) {
           sessions[from] = {
@@ -207,54 +206,27 @@ export async function POST(req) {
         const session = sessions[from];
         session.history.push({ role: "user", content: userInput });
 
-        let aiMessage;
-        try {
-          aiMessage = await callOpenRouterAI(session.history);
-        } catch (e) {
-          console.error("AI Error:", e);
-          await sendText(from, "Sorry, I'm having trouble right now. Please try again.");
-          continue;
-        }
+        const aiMessage = await callOpenRouterAI(session.history);
 
-        // Add assistant message to history
         session.history.push({
           role: "assistant",
           content: aiMessage.content || "",
-          ...(aiMessage.tool_calls ? { tool_calls: aiMessage.tool_calls } : {}),
+          ...(aiMessage.tool_calls ? { tool_calls: aiMessage.tool_calls } : {})
         });
 
-        // 🔧 TOOL CALL HANDLING
         if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
           for (const toolCall of aiMessage.tool_calls) {
             const toolName = toolCall.function.name;
-            let args;
-
-            try {
-              args = JSON.parse(toolCall.function.arguments);
-            } catch (err) {
-              console.error("Invalid tool_call arguments:", err, toolCall.function.arguments);
-              await sendText(from, "Invalid data received. Please try again.");
-              continue;
-            }
-
-            // Force overwrite 'to' with actual user phone number
-            args.to = from;
-            console.log("Triggering", toolName, "with args:", args);
+            const args = JSON.parse(toolCall.function.arguments);
 
             if (toolName === "sendButtons") {
               await sendButtons(args.to, args.text, args.buttons || []);
             } else if (toolName === "sendText") {
               await sendText(args.to, args.text);
-            } else {
-              await sendText(from, "Unknown action requested.");
             }
           }
-        } else {
-          // No tool call fallback
-          if (aiMessage.content) {
-            await sendText(from, aiMessage.content);
-console.log("triggred")
-          }
+        } else if (aiMessage.content) {
+          await sendText(from, aiMessage.content);
         }
       }
     }
@@ -262,3 +234,4 @@ console.log("triggred")
 
   return new Response("EVENT_RECEIVED", { status: 200 });
 }
+
