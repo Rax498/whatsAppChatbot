@@ -234,21 +234,21 @@ export async function POST(req) {
         session.history.push({
           role: "assistant",
           content: aiMessage.content || "",
-          ...(aiMessage.tool_calls ? { tool_calls: aiMessage.tool_calls } : {})
+          ...(aiMessage.tool_calls ? { tool_calls: aiMessage.tool_calls } : {}),
         });
 
         if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
           for (const toolCall of aiMessage.tool_calls) {
-           
+            const toolName = toolCall.function.name;
 
-  const toolName = toolCall.function.name;
-  const args = JSON.parse(toolCall.function.arguments);
-            console.log(args)
-
-
-} 
-            
-        
+            let args;
+            try {
+              args = JSON.parse(toolCall.function.arguments);
+            } catch (err) {
+              console.error("Invalid arguments in tool_call:", err);
+              await sendText(from, "Something went wrong. Please try again.");
+              continue;
+            }
 
             if (toolName === "sendButtons") {
               await sendButtons(args.to, args.text, args.buttons || []);
@@ -257,8 +257,6 @@ export async function POST(req) {
             } else {
               await sendText(from, "Unknown tool requested.");
             }
-
-          
           }
         } else {
           if (aiMessage.content) {
