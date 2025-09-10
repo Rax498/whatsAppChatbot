@@ -52,14 +52,20 @@ Important:
 - Use buttons for these steps: meal, location, preferences, date.
 - For "date" step, suggest buttons like: ${futureDates.join(", ")}.
 
-You MUST respond ONLY with a function call JSON in this format:
+You MUST respond ONLY with a tool call JSON in this format:
 
 {
   "role": "assistant",
-  "function_call": {
-    "name": "<sendButtons_or_sendText>",
-    "arguments": "{\"to\":\"${userPhone}\", \"text\":\"<message>\", \"buttons\":[\"button1\", \"button2\"]}"
-  }
+  "tool_calls": [
+    {
+      "id": "call_123",
+      "type": "function",
+      "function": {
+        "name": "<sendButtons_or_sendText>",
+        "arguments": "{\"to\":\"${userPhone}\", \"text\":\"<message>\", \"buttons\":[\"button1\", \"button2\"]}"
+      }
+    }
+  ]
 }
 
 If sending text only, omit the "buttons" field or send an empty array.
@@ -149,11 +155,15 @@ async function sendText(to, text) {
 }
 
 async function sendButtons(to, text, buttons) {
-  const btns = buttons
+  const btns = (buttons || [])
     .slice(0, 3)
+    .filter((title) => typeof title === "string" && title.trim() !== "")
     .map((title, idx) => ({
       type: "reply",
-      reply: { id: `btn_${Date.now()}_${idx}`, title: title.slice(0, 20) },
+      reply: {
+        id: `btn_${idx}_${Math.random().toString(36).substr(2, 5)}`,
+        title: title.slice(0, 20),
+      },
     }));
 
   const res = await fetch(`https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`, {
@@ -216,25 +226,25 @@ export async function POST(req) {
         try {
           aiMessage = await callOpenRouterAI(session.history);
         } catch (e) {
-          await sendText(from, "Sorry, I’m having trouble understanding. Please try again.");
+          console.error("AI Error:", e);
+          await sendText(from, "Sorry, I'm having trouble right now. Please try again.");
           continue;
         }
 
-        session.history.push(aiMessage);
+        session.history.push({
+          role: "assistant",
+          content: aiMessage.content || "",
+          ...(aiMessage.tool_calls ? { tool_calls: aiMessage.tool_calls } : {})
+        });
 
-        // Handle function calls from AI
-        if (aiMessage.function_call) {
-          const functionCalls = Array.isArray(aiMessage.function_call)
-            ? aiMessage.function_call
-            : [aiMessage.function_call];
-
-          for (const funcCall of functionCalls) {
-            const { name, arguments: argsStr } = funcCall;
+        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+          for (const toolCall of aiMessage.tool_calls) {
+            const { name, arguments: argsStr } = toolCall.function;
             let args;
             try {
-              args = JSON.parse(argsStr);
+              args = typeof argsStr === "string" ? JSON.parse(argsStr) : argsStr;
             } catch (err) {
-              console.error("Failed to parse function_call arguments", err);
+              console.error("Failed to parse tool arguments:", err);
               await sendText(from, "Oops! Something went wrong. Please try again.");
               continue;
             }
@@ -244,15 +254,19 @@ export async function POST(req) {
             } else if (name === "sendText") {
               await sendText(args.to, args.text);
             } else {
-              await sendText(from, "Sorry, I don't understand the request.");
+              await sendText(from, "Unknown tool requested.");
             }
 
-            // Add tool call to history for context
-            session.history.push({ role: "tool", name, content: "OK" });
+            session.history.push({
+              role: "tool",
+              name,
+              content: "OK",
+            });
           }
         } else {
-          // Fallback: send plain text if AI ignores instruction (should not happen)
-          await sendText(from, aiMessage.content);
+          if (aiMessage.content) {
+            await sendText(from, aiMessage.content);
+          }
         }
       }
     }
