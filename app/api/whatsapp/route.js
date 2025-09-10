@@ -31,7 +31,7 @@ function generateSummary(res) {
 Please Confirm or Cancel.`;
 }
 
-function getSystemPrompt() {
+function getSystemPrompt(userPhone) {
   const futureDates = getNextDates(5);
   return `
 You are Zoya, a friendly and smart reservation assistant for Kola.
@@ -58,7 +58,7 @@ You MUST respond ONLY with a function call JSON in this format:
   "role": "assistant",
   "function_call": {
     "name": "<sendButtons_or_sendText>",
-    "arguments": "{\"to\":\"<user_phone>\", \"text\":\"<message>\", \"buttons\":[\"button1\", \"button2\"]}"
+    "arguments": "{\"to\":\"${userPhone}\", \"text\":\"<message>\", \"buttons\":[\"button1\", \"button2\"]}"
   }
 }
 
@@ -204,7 +204,7 @@ export async function POST(req) {
 
         if (!sessions[from]) {
           sessions[from] = {
-            history: [{ role: "system", content: getSystemPrompt() }],
+            history: [{ role: "system", content: getSystemPrompt(from) }],
             reservation: {},
           };
         }
@@ -254,15 +254,6 @@ export async function POST(req) {
           // Fallback: send plain text if AI ignores instruction (should not happen)
           await sendText(from, aiMessage.content);
         }
-
-        // Save user input to reservation if step is present and not confirmed yet
-        // This depends on your AI design — if your AI returns step keys, you can implement here.
-        // For example:
-        // if (aiMessage.step && aiMessage.step !== "confirm" && !session.reservation[aiMessage.step]) {
-        //   session.reservation[aiMessage.step] = userInput;
-        // }
-
-        // You can add your reservation complete/confirmation logic here if needed.
       }
     }
   }
