@@ -12,363 +12,449 @@ const locations = [
 const hotels = {
   loc_coorg: [
     {
-      id: "Lily Pool Cottage ",
-      title: "Lily Pool Cottage ",
+      id: "lily_pool_cottage",
+      title: "Lily Pool Cottage",
       imageUrl:
         "https://assets.simplotel.com/simplotel/image/upload/x_3,y_0,w_2394,h_1347,r_0,c_crop,q_60,fl_progressive/w_450,f_auto,c_fit/chikkana-halli-estate-coorg-india/feature1_1_of_1_ueq4vr",
       description:
-        "The Lily Pool Cottage is a luxury Plantation Style suite with a charming, spacious bedroom, living room and an ensuite bathroom. Perfect for couples, these elegantly designed suites come with a spacious sit-out overlooking a courtyard with a private pool set amidst a tranquil lily pond.",
-      price: "₹35,000/ night",
+        "Luxury Plantation Style suite with a spacious bedroom, living room, and private pool.",
+      price: "₹35,000 / night",
     },
   ],
   loc_hampi: [
     {
-      id: "Heritage Pool Villa",
+      id: "heritage_pool_villa",
       title: "Heritage Pool Villa",
       imageUrl:
         "https://assets.simplotel.com/simplotel/image/upload/x_0,y_20,w_2400,h_1350,r_0,c_crop,q_60,fl_progressive/w_450,f_auto,c_fit/chikkana-halli-estate-coorg-india/banner_1_of_1_ewof1q",
       description:
-        "This is Kodava architecture at its luxurious best. The Heritage Pool Villas boast a separate living room and en-suite bedroom, with a courtyard and your very own personal swimming pool with deck chairs. And, affording a pool view are two lovely sit-outs, complete with planters’ chairs to laze on with a book and drink on hand. *Minimum pool temperature – 26° C (Temperature control in the pools are deactivated during April and May)",
+        "Kodava architecture, personal swimming pool with deck chairs, and lovely sit-outs.",
       price: "₹40,000 / night",
     },
   ],
   loc_kabini: [
     {
-      id: "Lily Pool Duplex",
+      id: "lily_pool_duplex",
       title: "Lily Pool Duplex",
       imageUrl:
         "https://assets.simplotel.com/simplotel/image/upload/x_0,y_13,w_1536,h_863,r_0,c_crop,q_60,fl_progressive/w_450,f_auto,c_fit/evolve-back-coorg/Lily_Pool_Duplex-Courtyard-1536x889_xt45ee",
       description:
-        "The Lily Pool Duplex is a Plantation Style, 2-level luxury suite. Perfect for families, these elegantly designed villas come with a living area and a powder room on the ground floor leading to a deck overlooking your private temperature-controlled* pool, set amidst a tranquil lily pond. The first floor boasts a spacious bedroom with an attached bath and a private balcony. *Minimum pool temperature – 26° C (Temperature control in the pools are deactivated during April and May).",
+        "2-level luxury suite with private temperature-controlled pool and balcony.",
       price: "₹40,000 / night",
     },
   ],
   loc_kalahari: [
     {
-      id: "Lily Pool Bungalow ",
-      title: "Lily Pool Bungalow ",
+      id: "lily_pool_bungalow",
+      title: "Lily Pool Bungalow",
       imageUrl:
         "https://assets.simplotel.com/simplotel/image/upload/x_0,y_23,w_2400,h_1349,r_0,c_crop,q_60,fl_progressive/w_450,f_auto,c_fit/chikkana-halli-estate-coorg-india/banner_1_of_1_vma6wj",
       description:
-        "The Lily Pool Bungalow is a Plantation Style 2-bedroom luxury suite with 2 baths and a spacious living room. Perfect for families, these elegantly designed bungalows come with a spacious sit-out overlooking a private courtyard with its own pool set amidst a tranquil lily pond. *Minimum pool temperature – 26° C (Temperature control in the pools are deactivated during April and May)",
+        "Plantation Style 2-bedroom suite with spacious living room and private courtyard pool.",
       price: "₹67,000 / night",
     },
   ],
 };
 
-// Simple in-memory session store
+// In-memory session storage (for demo only, reset on restart)
 const sessions = {};
 
+// Helper to send messages via WhatsApp API
 async function sendMessage(to, messageBody) {
-  return fetch(`https://graph.facebook.com/v15.0/${PHONE_NUMBER_ID}/messages`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-    },
-    body: JSON.stringify({ messaging_product: "whatsapp", to, ...messageBody }),
-  });
+  const res = await fetch(
+    `https://graph.facebook.com/v15.0/${PHONE_NUMBER_ID}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        ...messageBody,
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("Failed to send message:", text);
+  }
 }
 
+// Handler for webhook GET verification
 export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  if (
-    searchParams.get("hub.mode") === "subscribe" &&
-    searchParams.get("hub.verify_token") === VERIFY_TOKEN
-  ) {
-    return new Response(searchParams.get("hub.challenge"), { status: 200 });
+  const url = new URL(req.url);
+  const mode = url.searchParams.get("hub.mode");
+  const token = url.searchParams.get("hub.verify_token");
+  const challenge = url.searchParams.get("hub.challenge");
+
+  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    return new Response(challenge, { status: 200 });
   }
   return new Response("Forbidden", { status: 403 });
 }
 
+// Handler for incoming messages (POST)
 export async function POST(req) {
   const body = await req.json();
 
   for (const entry of body.entry || []) {
     for (const change of entry.changes || []) {
-      for (const msg of change.value?.messages || []) {
-        const from = msg.from;
-
-        if (!sessions[from]) {
-          sessions[from] = { step: "greeting" };
+      for (const message of change.value?.messages || []) {
+        const from = message.from;
+        let session = sessions[from];
+        if (!session) {
+          session = { step: "greeting" };
+          sessions[from] = session;
         }
 
-        const session = sessions[from];
+        // Extract user input from text or interactive replies
         const userInput =
-          msg.interactive?.button_reply?.id ||
-          msg.text?.body?.trim().toLowerCase() ||
+          message.interactive?.button_reply?.id ||
+          message.interactive?.list_reply?.id ||
+          message.text?.body?.trim().toLowerCase() ||
           "";
 
-        if (session.step === "greeting") {
-          await sendMessage(from, {
-            type: "text",
-            text: {
-              body: "👋 Hello! Welcome to our hotel booking service.\nPlease select your location:",
-            },
-          });
-          // Send location selection buttons
-          await sendMessage(from, {
-            type: "interactive",
-            interactive: {
-              type: "button",
-              body: { text: "Choose your location:" },
-              action: {
-                buttons: locations.map((loc) => ({
-                  type: "reply",
-                  reply: { id: loc.id, title: loc.title },
-                })),
-              },
-            },
-          });
-          session.step = "locationSelected";
-          continue;
-        }
-
-        if (session.step === "locationSelected") {
-          const selectedLocation = locations.find(
-            (loc) => loc.id === userInput
-          );
-          if (!selectedLocation) {
-            await sendMessage(from, {
-              type: "text",
-              text: { body: "Please select a location from the options." },
-            });
-            continue;
-          }
-          session.location = selectedLocation;
-          // Send hotels for selected location with image + description + price as individual image messages
-          const availableHotels = hotels[selectedLocation.id] || [];
-
-          for (const hotel of availableHotels) {
-            await sendMessage(from, {
-              type: "image",
-              image: {
-                link: hotel.imageUrl,
-                caption: `${hotel.title}\n${hotel.description}\nPrice: ${hotel.price}`,
-              },
-            });
-          }
-
-          // Then ask user to pick hotel
-          await sendMessage(from, {
-            type: "interactive",
-            interactive: {
-              type: "button",
-              body: { text: "Please select your hotel:" },
-              action: {
-                buttons: availableHotels.map((hotel) => ({
-                  type: "reply",
-                  reply: { id: hotel.id, title: hotel.title },
-                })),
-              },
-            },
-          });
-          session.step = "hotelSelected";
-          continue;
-        }
-
-        if (session.step === "hotelSelected") {
-          // Validate hotel selection
-          const locationHotels = hotels[session.location.id] || [];
-          const selectedHotel = locationHotels.find((h) => h.id === userInput);
-          if (!selectedHotel) {
-            await sendMessage(from, {
-              type: "text",
-              text: { body: "Please select a valid hotel from the options." },
-            });
-            continue;
-          }
-          session.hotel = selectedHotel;
-
-          // Ask for Check-in date (as text since no date picker)
-          await sendMessage(from, {
-            type: "text",
-            text: { body: "Please enter your check-in date (YYYY-MM-DD):" },
-          });
-          session.step = "askCheckIn";
-          continue;
-        }
-
-        if (session.step === "askCheckIn") {
-          // Basic validation for date format
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(userInput)) {
+        switch (session.step) {
+          case "greeting":
+            // Send welcome message + List Message to select location
             await sendMessage(from, {
               type: "text",
               text: {
-                body: "Invalid date format. Please enter check-in date as YYYY-MM-DD:",
+                body:
+                  "👋 Hello! Welcome to Evolve Back hotel booking service. Please select your location from the list below:",
               },
             });
-            continue;
+
+            // WhatsApp List Message for locations
+            await sendMessage(from, {
+              type: "interactive",
+              interactive: {
+                type: "list",
+                header: {
+                  type: "text",
+                  text: "Choose Location",
+                },
+                body: {
+                  text: "Please select your location:",
+                },
+                footer: {
+                  text: "You can only select one location",
+                },
+                action: {
+                  button: "Select Location",
+                  sections: [
+                    {
+                      title: "Locations",
+                      rows: locations.map((loc) => ({
+                        id: loc.id,
+                        title: loc.title,
+                        description: `Hotels in ${loc.title}`,
+                      })),
+                    },
+                  ],
+                },
+              },
+            });
+
+            session.step = "locationSelected";
+            break;
+
+          case "locationSelected": {
+            const selectedLocation = locations.find((loc) => loc.id === userInput);
+            if (!selectedLocation) {
+              await sendMessage(from, {
+                type: "text",
+                text: {
+                  body:
+                    "❌ Invalid selection. Please choose your location from the list.",
+                },
+              });
+              break;
+            }
+            session.location = selectedLocation;
+
+            // Show hotel options for this location as separate image + text messages (image with caption)
+            const availableHotels = hotels[selectedLocation.id] || [];
+            if (availableHotels.length === 0) {
+              await sendMessage(from, {
+                type: "text",
+                text: { body: "No hotels available for this location." },
+              });
+              session.step = "greeting"; // restart
+              break;
+            }
+
+            // Send images with captions describing each hotel (room)
+            for (const hotel of availableHotels) {
+              await sendMessage(from, {
+                type: "image",
+                image: {
+                  link: hotel.imageUrl,
+                  caption: `*${hotel.title}*\n${hotel.description}\nPrice: ${hotel.price}`,
+                },
+              });
+            }
+
+            // Now ask user to select a hotel (using List Message)
+            await sendMessage(from, {
+              type: "interactive",
+              interactive: {
+                type: "list",
+                header: {
+                  type: "text",
+                  text: "Select Hotel",
+                },
+                body: {
+                  text: "Please select your hotel:",
+                },
+                footer: {
+                  text: "Choose one",
+                },
+                action: {
+                  button: "Select Hotel",
+                  sections: [
+                    {
+                      title: "Available Hotels",
+                      rows: availableHotels.map((hotel) => ({
+                        id: hotel.id,
+                        title: hotel.title,
+                        description: hotel.price,
+                      })),
+                    },
+                  ],
+                },
+              },
+            });
+
+            session.step = "hotelSelected";
+            break;
           }
-          session.checkIn = userInput;
 
-          // Ask check-out
-          await sendMessage(from, {
-            type: "text",
-            text: { body: "Please enter your check-out date (YYYY-MM-DD):" },
-          });
-          session.step = "askCheckOut";
-          continue;
-        }
+          case "hotelSelected": {
+            const locationHotels = hotels[session.location.id] || [];
+            const selectedHotel = locationHotels.find((h) => h.id === userInput);
 
-        if (session.step === "askCheckOut") {
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(userInput)) {
+            if (!selectedHotel) {
+              await sendMessage(from, {
+                type: "text",
+                text: {
+                  body: "❌ Please select a valid hotel from the list.",
+                },
+              });
+              break;
+            }
+
+            session.hotel = selectedHotel;
+
+            // Ask for check-in date as text (no date picker in WhatsApp API)
             await sendMessage(from, {
               type: "text",
-              text: {
-                body: "Invalid date format. Please enter check-out date as YYYY-MM-DD:",
-              },
+              text: { body: "Please enter your check-in date (YYYY-MM-DD):" },
             });
-            continue;
+
+            session.step = "askCheckIn";
+            break;
           }
-          session.checkOut = userInput;
 
-          // Ask adults numbera
-          await sendMessage(from, {
-            type: "interactive",
-            interactive: {
-              type: "button",
-              body: { text: "Number of adults:" },
-              action: {
-                buttons: [1, 2, 3, 4, 5].map((n) => ({
-                  type: "reply",
-                  reply: { id: `adults_${n}`, title: n.toString() },
-                })),
-              },
-            },
-          });
-          session.step = "askAdults";
-          continue;
-        }
+          case "askCheckIn": {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(userInput)) {
+              await sendMessage(from, {
+                type: "text",
+                text: {
+                  body:
+                    "❌ Invalid date format. Please enter check-in date as YYYY-MM-DD:",
+                },
+              });
+              break;
+            }
+            session.checkIn = userInput;
 
-        if (session.step === "askAdults") {
-          if (!userInput.startsWith("adults_")) {
+            // Ask for check-out date
             await sendMessage(from, {
               type: "text",
-              text: {
-                body: "Please select number of adults using the buttons.",
-              },
+              text: { body: "Please enter your check-out date (YYYY-MM-DD):" },
             });
-            continue;
+
+            session.step = "askCheckOut";
+            break;
           }
-          session.adults = userInput.split("_")[1];
 
-          // children number
-          await sendMessage(from, {
-            type: "interactive",
-            interactive: {
-              type: "button",
-              body: { text: "Number of children:" },
-              action: {
-                buttons: [0, 1, 2, 3, 4, 5].map((n) => ({
-                  type: "reply",
-                  reply: { id: `children_${n}`, title: n.toString() },
-                })),
-              },
-            },
-          });
-          session.step = "askChildren";
-          continue;
-        }
+          case "askCheckOut": {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(userInput)) {
+              await sendMessage(from, {
+                type: "text",
+                text: {
+                  body:
+                    "❌ Invalid date format. Please enter check-out date as YYYY-MM-DD:",
+                },
+              });
+              break;
+            }
+            session.checkOut = userInput;
 
-        if (session.step === "askChildren") {
-          if (!userInput.startsWith("children_")) {
+            // Ask number of adults (button message)
             await sendMessage(from, {
-              type: "text",
-              text: {
-                body: "Please select number of children using the buttons.",
+              type: "interactive",
+              interactive: {
+                type: "button",
+                body: { text: "Number of adults:" },
+                action: {
+                  buttons: [1, 2, 3, 4, 5].map((n) => ({
+                    type: "reply",
+                    reply: { id: `adults_${n}`, title: n.toString() },
+                  })),
+                },
               },
             });
-            continue;
+
+            session.step = "askAdults";
+            break;
           }
-          session.children = userInput.split("_")[1];
 
-          //  promo code
-          await sendMessage(from, {
-            type: "text",
-            text: { body: "Enter promo code (or type 'none'):" },
-          });
-          session.step = "askPromo";
-          continue;
-        }
+          case "askAdults": {
+            if (!userInput.startsWith("adults_")) {
+              await sendMessage(from, {
+                type: "text",
+                text: {
+                  body: "Please select number of adults using the buttons below.",
+                },
+              });
+              break;
+            }
 
-        if (session.step === "askPromo") {
-          session.promo = userInput === "none" ? null : userInput;
+            session.adults = userInput.split("_")[1];
 
-          //  summary and ask confirm
-          let summary =
-            `✅ *Booking Summary:*\n` +
-            `Location: ${session.location.title}\n` +
-            `Hotel: ${session.hotel.title}\n` +
-            `Check-in: ${session.checkIn}\n` +
-            `Check-out: ${session.checkOut}\n` +
-            `Adults: ${session.adults}\n` +
-            `Children: ${session.children}\n` +
-            `Promo Code: ${session.promo || "None"}`;
-
-          await sendMessage(from, {
-            type: "interactive",
-            interactive: {
-              type: "button",
-              body: {
-                text: summary + "\n\nDo you want to confirm your booking?",
-              },
-              action: {
-                buttons: [
-                  { type: "reply", reply: { id: "confirm_yes", title: "Yes" } },
-                  { type: "reply", reply: { id: "confirm_no", title: "No" } },
-                ],
-              },
-            },
-          });
-          session.step = "confirmBooking";
-          continue;
-        }
-
-        if (session.step === "confirmBooking") {
-          if (userInput === "confirm_yes") {
+            // Ask number of children (button message)
             await sendMessage(from, {
-              type: "text",
-              text: {
-                body: "Thank you! Your booking has been confirmed. We will contact you shortly.",
+              type: "interactive",
+              interactive: {
+                type: "button",
+                body: { text: "Number of children:" },
+                action: {
+                  buttons: [0, 1, 2, 3, 4, 5].map((n) => ({
+                    type: "reply",
+                    reply: { id: `children_${n}`, title: n.toString() },
+                  })),
+                },
               },
             });
-            session.step = "completed";
-          } else if (userInput === "confirm_no") {
+
+            session.step = "askChildren";
+            break;
+          }
+
+          case "askChildren": {
+            if (!userInput.startsWith("children_")) {
+              await sendMessage(from, {
+                type: "text",
+                text: {
+                  body: "Please select number of children using the buttons below.",
+                },
+              });
+              break;
+            }
+
+            session.children = userInput.split("_")[1];
+
+            // Ask for promo code (text)
+            await sendMessage(from, {
+              type: "text",
+              text: { body: "Enter promo code (or type 'none'):" },
+            });
+
+            session.step = "askPromo";
+            break;
+          }
+
+          case "askPromo": {
+            session.promo = userInput === "none" ? null : userInput;
+
+            // Show booking summary and ask for confirmation
+            const summary = `✅ *Booking Summary:*\n
+Location: ${session.location.title}
+Hotel: ${session.hotel.title}
+Check-in: ${session.checkIn}
+Check-out: ${session.checkOut}
+Adults: ${session.adults}
+Children: ${session.children}
+Promo Code: ${session.promo || "None"}`;
+
+            await sendMessage(from, {
+              type: "interactive",
+              interactive: {
+                type: "button",
+                body: {
+                  text: summary + "\n\nDo you want to confirm your booking?",
+                },
+                action: {
+                  buttons: [
+                    { type: "reply", reply: { id: "confirm_yes", title: "Yes" } },
+                    { type: "reply", reply: { id: "confirm_no", title: "No" } },
+                  ],
+                },
+              },
+            });
+
+            session.step = "confirmBooking";
+            break;
+          }
+
+          case "confirmBooking": {
+            if (userInput === "confirm_yes") {
+              await sendMessage(from, {
+                type: "text",
+                text: {
+                  body:
+                    "🎉 Thank you! Your booking is confirmed. We will contact you shortly.",
+                },
+              });
+
+              session.step = "completed";
+            } else if (userInput === "confirm_no") {
+              await sendMessage(from, {
+                type: "text",
+                text: {
+                  body:
+                    "❌ Booking cancelled. To start again, send any message.",
+                },
+              });
+
+              delete sessions[from];
+            } else {
+              await sendMessage(from, {
+                type: "text",
+                text: {
+                  body: "Please confirm your booking by selecting Yes or No.",
+                },
+              });
+            }
+            break;
+          }
+
+          case "completed":
             await sendMessage(from, {
               type: "text",
               text: {
-                body: "Booking cancelled. If you want to start again, type anything.",
+                body:
+                  "Thank you for using our service. To start a new booking, send any message.",
               },
             });
             delete sessions[from];
-          } else {
+            break;
+
+          default:
             await sendMessage(from, {
               type: "text",
-              text: { body: "Please confirm by selecting 'Yes' or 'No'." },
+              text: {
+                body:
+                  "Sorry, I did not understand that. Please follow the instructions.",
+              },
             });
-          }
-          continue;
+            break;
         }
-
-        if (session.step === "completed") {
-          await sendMessage(from, {
-            type: "text",
-            text: {
-              body: "Thank you for using our service. To start a new booking, type anything.",
-            },
-          });
-          delete sessions[from];
-          continue;
-        }
-
-        // Default fallback
-        await sendMessage(from, {
-          type: "text",
-          text: {
-            body: "Sorry, I did not understand that. Please follow the instructions.",
-          },
-        });
       }
     }
   }
