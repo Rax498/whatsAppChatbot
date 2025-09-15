@@ -9,10 +9,10 @@ const locations = [
   { id: "loc_kalahari", title: "Kalahari" },
 ];
 
-const hotels = {
+const Rooms = {
   loc_coorg: [
     {
-      id: "lily_pool_cottage",
+      id: "lily_pool_cottage", 
       title: "Lily Pool Cottage",
       imageUrl:
         "https://assets.simplotel.com/simplotel/image/upload/x_3,y_0,w_2394,h_1347,r_0,c_crop,q_60,fl_progressive/w_450,f_auto,c_fit/chikkana-halli-estate-coorg-india/feature1_1_of_1_ueq4vr",
@@ -124,7 +124,7 @@ export async function POST(req) {
               type: "text",
               text: {
                 body:
-                  "👋 Hello! Welcome to Evolve Back hotel booking service. Please select your location from the list below:",
+                  "👋 Hello! Welcome to Evolve Back hotel booking service. "
               },
             });
 
@@ -140,9 +140,7 @@ export async function POST(req) {
                 body: {
                   text: "Please select your location:",
                 },
-                footer: {
-                  text: "You can only select one location",
-                },
+                
                 action: {
                   button: "Select Location",
                   sections: [
@@ -151,7 +149,7 @@ export async function POST(req) {
                       rows: locations.map((loc) => ({
                         id: loc.id,
                         title: loc.title,
-                        description: `Hotels in ${loc.title}`,
+                        description: `Rooms in ${loc.title}`,
                       })),
                     },
                   ],
@@ -176,19 +174,19 @@ export async function POST(req) {
             }
             session.location = selectedLocation;
 
-            // Show hotel options for this location as separate image + text messages (image with caption)
-            const availableHotels = hotels[selectedLocation.id] || [];
-            if (availableHotels.length === 0) {
+            // Show hotel options for this location 
+            const availableRooms = Rooms || [];
+            if (availableRooms.length === 0) {
               await sendMessage(from, {
                 type: "text",
-                text: { body: "No hotels available for this location." },
+                text: { body: "No Rooms available for this location." },
               });
               session.step = "greeting"; // restart
               break;
             }
 
             // Send images with captions describing each hotel (room)
-            for (const hotel of availableHotels) {
+            for (const hotel of availableRooms) {
               await sendMessage(from, {
                 type: "image",
                 image: {
@@ -205,20 +203,18 @@ export async function POST(req) {
                 type: "list",
                 header: {
                   type: "text",
-                  text: "Select Hotel",
+                  text: " Rooms ",
                 },
                 body: {
-                  text: "Please select your hotel:",
+                  text: "Please select your Room :",
                 },
-                footer: {
-                  text: "Choose one",
-                },
+                
                 action: {
-                  button: "Select Hotel",
+                  button: "Select Room",
                   sections: [
                     {
-                      title: "Available Hotels",
-                      rows: availableHotels.map((hotel) => ({
+                      title: "Available Rooms",
+                      rows: availableRooms.map((hotel) => ({
                         id: hotel.id,
                         title: hotel.title,
                         description: hotel.price,
@@ -229,23 +225,13 @@ export async function POST(req) {
               },
             });
 
-            session.step = "hotelSelected";
+            session.step = "Roomselected";
             break;
           }
 
-          case "hotelSelected": {
-            const locationHotels = hotels[session.location.id] || [];
-            const selectedHotel = locationHotels.find((h) => h.id === userInput);
-
-            if (!selectedHotel) {
-              await sendMessage(from, {
-                type: "text",
-                text: {
-                  body: "❌ Please select a valid hotel from the list.",
-                },
-              });
-              break;
-            }
+          case "Roomselected": {
+            const locationRooms = Rooms[session.location.id] || [];
+            const selectedHotel = locationRooms.find((h) => h.id === userInput);
 
             session.hotel = selectedHotel;
 
