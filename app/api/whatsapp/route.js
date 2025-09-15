@@ -42,6 +42,33 @@ const Rooms = [
 
 const sessions = new Map();
 
+// Session timeout configuration (30 minutes)
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+
+function cleanupExpiredSessions() {
+  const now = Date.now();
+  for (const [userId, session] of sessions.entries()) {
+    if (session.lastActivity && (now - session.lastActivity) > SESSION_TIMEOUT) {
+      sessions.delete(userId);
+    }
+  }
+}
+
+function updateSessionActivity(userId) {
+  const session = sessions.get(userId);
+  if (session) {
+    session.lastActivity = Date.now();
+    sessions.set(userId, session);
+  }
+}
+
+function setSessionStep(from, step) {
+  const session = sessions.get(from) || {};
+  session.step = step;
+  session.lastActivity = Date.now();
+  sessions.set(from, session);
+}
+
 async function sendMessage(to, messageBody) {
   await fetch(`https://graph.facebook.com/v15.0/${PHONE_NUMBER_ID}/messages`, {
     method: "POST",
@@ -67,6 +94,18 @@ function extractUserInput(message, step) {
   return message.text?.body?.trim().toLowerCase();
 }
 
+function isRestartCommand(input) {
+  const restartCommands = ['hi', 'hello', 'start', 'restart', 'begin', 'new booking'];
+  return typeof input === 'string' && restartCommands.includes(input.toLowerCase());
+}
+
+function resetSession(from) {
+  sessions.set(from, { 
+    step: "greeting", 
+    lastActivity: Date.now() 
+  });
+}
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   if (searchParams.get("hub.mode") === "subscribe" && searchParams.get("hub.verify_token") === VERIFY_TOKEN) {
@@ -78,13 +117,29 @@ export async function GET(req) {
 export async function POST(req) {
   const body = await req.json();
 
+  // Clean up expired sessions
+  cleanupExpiredSessions();
+
   for (const entry of body.entry || []) {
     for (const change of entry.changes || []) {
       for (const message of change.value?.messages || []) {
         const from = message.from;
-        let session = sessions.get(from) || { step: "greeting" };
+        let session = sessions.get(from) || { 
+          step: "greeting", 
+          lastActivity: Date.now() 
+        };
+
+        // Update session activity
+        updateSessionActivity(from);
 
         const userInput = extractUserInput(message, session.step);
+        
+        // Check for restart commands
+        if (isRestartCommand(userInput)) {
+          resetSession(from);
+          session = sessions.get(from);
+        }
+        
         if (!userInput && session.step !== "greeting") continue;
 
         switch (session.step) {
@@ -115,10 +170,22 @@ export async function POST(req) {
             });
 
             session.step = "locationSelected";
+            session.lastActivity = Date.now();
             sessions.set(from, session);
             break;
 
           case "locationSelected":
+            const selectedLocation = locations.find(loc => loc.id === userInput);
+            if (!selectedLocation) {
+              await sendMessage(from, {
+                type: "text",
+                text: { body: "❗ Invalid location selected. Please choose from the list above." },
+              });
+              break;
+            }
+
+            session.location = selectedLocation;
+
             for (const room of Rooms) {
               await sendMessage(from, {
                 type: "image",
@@ -150,12 +217,19 @@ export async function POST(req) {
             });
 
             session.step = "roomSelected";
+            session.lastActivity = Date.now();
             sessions.set(from, session);
             break;
 
           case "roomSelected":
             const selectedRoom = Rooms.find(r => r.id === userInput);
-            if (!selectedRoom) break;
+            if (!selectedRoom) {
+              await sendMessage(from, {
+                type: "text",
+                text: { body: "❗ Invalid room selected. Please choose from the list above." },
+              });
+              break;
+            }
 
             session.room = selectedRoom;
             await sendMessage(from, {
@@ -164,6 +238,7 @@ export async function POST(req) {
             });
 
             session.step = "askCheckIn";
+            session.lastActivity = Date.now();
             sessions.set(from, session);
             break;
 
@@ -171,7 +246,19 @@ export async function POST(req) {
             if (!/^\d{4}-\d{2}-\d{2}$/.test(userInput)) {
               await sendMessage(from, {
                 type: "text",
-                text: { body: "Invalid date format. Please enter check-in date as YYYY-MM-DD:" },
+                text: { body: "❗ Invalid date format. Please enter check-in date as YYYY-MM-DD (e.g., 2025-12-25):" },
+              });
+              break;
+            }
+
+            const inputCheckInDate = new Date(userInput);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            if (inputCheckInDate < today) {
+              await sendMessage(from, {
+                type: "text",
+                text: { body: "❗ Check-in date cannot be in the past. Please enter a future date (YYYY-MM-DD):" },
               });
               break;
             }
@@ -183,6 +270,7 @@ export async function POST(req) {
             });
 
             session.step = "askCheckOut";
+            session.lastActivity = Date.now();
             sessions.set(from, session);
             break;
 
@@ -190,7 +278,18 @@ export async function POST(req) {
             if (!/^\d{4}-\d{2}-\d{2}$/.test(userInput)) {
               await sendMessage(from, {
                 type: "text",
-                text: { body: "Invalid date format. Please enter check-out date as YYYY-MM-DD:" },
+                text: { body: "❗ Invalid date format. Please enter check-out date as YYYY-MM-DD (e.g., 2025-12-26):" },
+              });
+              break;
+            }
+
+            const checkOutDate = new Date(userInput);
+            const checkInDate = new Date(session.checkIn);
+            
+            if (checkOutDate <= checkInDate) {
+              await sendMessage(from, {
+                type: "text",
+                text: { body: "❗ Check-out date must be after check-in date. Please enter a valid check-out date (YYYY-MM-DD):" },
               });
               break;
             }
@@ -211,11 +310,18 @@ export async function POST(req) {
             });
 
             session.step = "askAdults";
+            session.lastActivity = Date.now();
             sessions.set(from, session);
             break;
 
           case "askAdults":
-            if (!userInput.startsWith("adults_")) break;
+            if (!userInput.startsWith("adults_")) {
+              await sendMessage(from, {
+                type: "text", 
+                text: { body: "❗ Please select the number of adults using the buttons above." },
+              });
+              break;
+            }
             session.adults = userInput.split("_")[1];
 
             await sendMessage(from, {
@@ -233,11 +339,18 @@ export async function POST(req) {
             });
 
             session.step = "askChildren";
+            session.lastActivity = Date.now();
             sessions.set(from, session);
             break;
 
           case "askChildren":
-            if (!userInput.startsWith("children_")) break;
+            if (!userInput.startsWith("children_")) {
+              await sendMessage(from, {
+                type: "text",
+                text: { body: "❗ Please select the number of children using the buttons above." },
+              });
+              break;
+            }
             session.children = userInput.split("_")[1];
 
             await sendMessage(from, {
@@ -246,13 +359,14 @@ export async function POST(req) {
             });
 
             session.step = "askPromo";
+            session.lastActivity = Date.now();
             sessions.set(from, session);
             break;
 
           case "askPromo":
             session.promo = userInput === "none" ? null : userInput;
 
-            const summary = `✅ *Booking Summary*:
+            const summary = `✅ Booking Summary:
 Room: ${session.room.title}
 Check-in: ${session.checkIn}
 Check-out: ${session.checkOut}
@@ -275,6 +389,7 @@ Promo Code: ${session.promo || "None"}`;
             });
 
             session.step = "confirmBooking";
+            session.lastActivity = Date.now();
             sessions.set(from, session);
             break;
 
@@ -282,24 +397,29 @@ Promo Code: ${session.promo || "None"}`;
             if (userInput === "confirm_yes") {
               await sendMessage(from, {
                 type: "text",
-                text: { body: "🎉 Thank you! Your booking is confirmed. 🏨" },
+                text: { body: "🎉 Thank you! Your booking is confirmed. We will contact you shortly with payment details. To make a new booking, just type 'hi'. 🏨" },
               });
               sessions.delete(from);
             } else if (userInput === "confirm_no") {
               await sendMessage(from, {
                 type: "text",
-                text: { body: "❌ Booking cancelled. To start a new booking, just send a message anytime." },
+                text: { body: "❌ Booking cancelled. To start a new booking, just type 'hi'." },
               });
               sessions.delete(from);
+            } else {
+              await sendMessage(from, {
+                type: "text",
+                text: { body: "❗ Please use the Yes or No buttons to confirm or cancel your booking." },
+              });
             }
             break;
 
           default:
             await sendMessage(from, {
               type: "text",
-              text: { body: "❗ Something went wrong. Please type 'hi' to start over." },
+              text: { body: "❗ Something went wrong. Please type 'hi' to start a new booking." },
             });
-            sessions.delete(from);
+            resetSession(from);
             break;
         }
       }
