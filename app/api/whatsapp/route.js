@@ -48,7 +48,8 @@ const Rooms = [
   },
 ];
 
-const sessions = {};
+// Changed this line from {} to Map()
+const sessions = new Map();
 
 async function sendMessage(to, messageBody) {
   const res = await fetch(
@@ -87,10 +88,12 @@ export async function POST(req) {
     for (const change of entry.changes || []) {
       for (const message of change.value?.messages || []) {
         const from = message.from;
-        let session = sessions[from];
+
+        // Use Map methods here
+        let session = sessions.get(from);
         if (!session) {
           session = { step: "greeting" };
-          sessions[from] = session;
+          sessions.set(from, session);
         }
 
         const userInput =
@@ -132,11 +135,13 @@ export async function POST(req) {
             break;
 
           case "locationSelected":
-            // ignore userInput, show sample rooms (Rooms array) always same for all locations
             for (const room of Rooms) {
               await sendMessage(from, {
                 type: "image",
-                image: { link: room.imageUrl, caption: `*${room.title}*\n${room.description}\nPrice: ${room.price}` },
+                image: {
+                  link: room.imageUrl,
+                  caption: `*${room.title}*\n${room.description}\nPrice: ${room.price}`,
+                },
               });
             }
 
@@ -316,7 +321,7 @@ Promo Code: ${session.promo || "None"}`;
                 type: "text",
                 text: { body: "Booking cancelled. To start again, send any message." },
               });
-              delete sessions[from];
+              sessions.delete(from);
             } else {
               await sendMessage(from, {
                 type: "text",
@@ -330,7 +335,7 @@ Promo Code: ${session.promo || "None"}`;
               type: "text",
               text: { body: "Thank you for using our service. To start a new booking, send any message." },
             });
-            delete sessions[from];
+            sessions.delete(from);
             break;
 
           default:
@@ -340,7 +345,7 @@ Promo Code: ${session.promo || "None"}`;
             });
             break;
         }
-        break; // Stop processing more steps for this message
+        break; 
       }
     }
   }
