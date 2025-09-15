@@ -13,37 +13,29 @@ const Rooms = [
   {
     id: "lily_pool_cottage",
     title: "Lily Pool Cottage",
-    imageUrl:
-      "https://assets.simplotel.com/simplotel/image/upload/x_3,y_0,w_2394,h_1347,r_0,c_crop,q_60,fl_progressive/w_450,f_auto,c_fit/chikkana-halli-estate-coorg-india/feature1_1_of_1_ueq4vr",
-    description:
-      "Luxury Plantation Style suite with a spacious bedroom, living room, and private pool.",
+    imageUrl: "https://assets.simplotel.com/...1_ueq4vr",
+    description: "Luxury Plantation Style suite with a spacious bedroom, living room, and private pool.",
     price: "₹35,000 / night",
   },
   {
     id: "heritage_pool_villa",
     title: "Heritage Pool Villa",
-    imageUrl:
-      "https://assets.simplotel.com/simplotel/image/upload/x_0,y_20,w_2400,h_1350,r_0,c_crop,q_60,fl_progressive/w_450,f_auto,c_fit/chikkana-halli-estate-coorg-india/banner_1_of_1_ewof1q",
-    description:
-      "Kodava architecture, personal swimming pool with deck chairs, and lovely sit-outs.",
+    imageUrl: "https://assets.simplotel.com/..._ewof1q",
+    description: "Kodava architecture, personal swimming pool with deck chairs, and lovely sit-outs.",
     price: "₹40,000 / night",
   },
   {
     id: "lily_pool_duplex",
     title: "Lily Pool Duplex",
-    imageUrl:
-      "https://assets.simplotel.com/simplotel/image/upload/x_0,y_13,w_1536,h_863,r_0,c_crop,q_60,fl_progressive/w_450,f_auto,c_fit/evolve-back-coorg/Lily_Pool_Duplex-Courtyard-1536x889_xt45ee",
-    description:
-      "2-level luxury suite with private temperature-controlled pool and balcony.",
+    imageUrl: "https://assets.simplotel.com/...xt45ee",
+    description: "2-level luxury suite with private temperature-controlled pool and balcony.",
     price: "₹40,000 / night",
   },
   {
     id: "lily_pool_bungalow",
     title: "Lily Pool Bungalow",
-    imageUrl:
-      "https://assets.simplotel.com/simplotel/image/upload/x_0,y_23,w_2400,h_1349,r_0,c_crop,q_60,fl_progressive/w_450,f_auto,c_fit/chikkana-halli-estate-coorg-india/banner_1_of_1_vma6wj",
-    description:
-      "Plantation Style 2-bedroom suite with spacious living room and private courtyard pool.",
+    imageUrl: "https://assets.simplotel.com/..._vma6wj",
+    description: "Plantation Style 2-bedroom suite with spacious living room and private courtyard pool.",
     price: "₹67,000 / night",
   },
 ];
@@ -65,7 +57,6 @@ async function sendMessage(to, messageBody) {
   });
 }
 
-// Normalize user input based on current step
 function extractUserInput(message, step) {
   if (step === "locationSelected" || step === "roomSelected") {
     return message.interactive?.list_reply?.id || "";
@@ -103,6 +94,7 @@ export async function POST(req) {
         }
 
         const userInput = extractUserInput(message, session.step);
+        if (!userInput && session.step !== "greeting") return new Response("OK");
 
         switch (session.step) {
           case "greeting":
@@ -134,10 +126,9 @@ export async function POST(req) {
             });
 
             session.step = "locationSelected";
-            break;
+            return new Response("OK");
 
           case "locationSelected":
-            if (!userInput) return new Response("OK", { status: 200 });
             for (const room of Rooms) {
               await sendMessage(from, {
                 type: "image",
@@ -171,12 +162,11 @@ export async function POST(req) {
             });
 
             session.step = "roomSelected";
-            break;
+            return new Response("OK");
 
           case "roomSelected":
-            if (!userInput) return new Response("OK", { status: 200 });
             const selectedRoom = Rooms.find((r) => r.id === userInput);
-            if (!selectedRoom) return new Response("OK", { status: 200 });
+            if (!selectedRoom) return new Response("OK");
 
             session.room = selectedRoom;
             await sendMessage(from, {
@@ -185,7 +175,7 @@ export async function POST(req) {
             });
 
             session.step = "askCheckIn";
-            break;
+            return new Response("OK");
 
           case "askCheckIn":
             if (!/^\d{4}-\d{2}-\d{2}$/.test(userInput)) {
@@ -193,15 +183,17 @@ export async function POST(req) {
                 type: "text",
                 text: { body: "Invalid date format. Please enter check-in date as YYYY-MM-DD:" },
               });
-              return new Response("OK", { status: 200 });
+              return new Response("OK");
             }
+
             session.checkIn = userInput;
             await sendMessage(from, {
               type: "text",
               text: { body: "Please enter your check-out date (YYYY-MM-DD):" },
             });
+
             session.step = "askCheckOut";
-            break;
+            return new Response("OK");
 
           case "askCheckOut":
             if (!/^\d{4}-\d{2}-\d{2}$/.test(userInput)) {
@@ -209,8 +201,9 @@ export async function POST(req) {
                 type: "text",
                 text: { body: "Invalid date format. Please enter check-out date as YYYY-MM-DD:" },
               });
-              return new Response("OK", { status: 200 });
+              return new Response("OK");
             }
+
             session.checkOut = userInput;
             await sendMessage(from, {
               type: "interactive",
@@ -225,11 +218,13 @@ export async function POST(req) {
                 },
               },
             });
+
             session.step = "askAdults";
-            break;
+            return new Response("OK");
 
           case "askAdults":
-            if (!userInput.startsWith("adults_")) return new Response("OK", { status: 200 });
+            if (!userInput.startsWith("adults_")) return new Response("OK");
+
             session.adults = userInput.split("_")[1];
             await sendMessage(from, {
               type: "interactive",
@@ -244,28 +239,33 @@ export async function POST(req) {
                 },
               },
             });
+
             session.step = "askChildren";
-            break;
+            return new Response("OK");
 
           case "askChildren":
-            if (!userInput.startsWith("children_")) return new Response("OK", { status: 200 });
+            if (!userInput.startsWith("children_")) return new Response("OK");
+
             session.children = userInput.split("_")[1];
             await sendMessage(from, {
               type: "text",
               text: { body: "Enter promo code (or type 'none'):" },
             });
+
             session.step = "askPromo";
-            break;
+            return new Response("OK");
 
           case "askPromo":
-            session.promo = userInput === "none" ? null : userInput;
-            const summary = `✅ Booking Summary:
+                        session.promo = userInput === "none" ? null : userInput;
+
+            const summary = `✅ *Booking Summary*:
 Room: ${session.room.title}
 Check-in: ${session.checkIn}
 Check-out: ${session.checkOut}
 Adults: ${session.adults}
 Children: ${session.children}
 Promo Code: ${session.promo || "None"}`;
+
             await sendMessage(from, {
               type: "interactive",
               interactive: {
@@ -279,32 +279,50 @@ Promo Code: ${session.promo || "None"}`;
                 },
               },
             });
+
             session.step = "confirmBooking";
-            break;
+            return new Response("OK");
 
           case "confirmBooking":
             if (userInput === "confirm_yes") {
               await sendMessage(from, {
                 type: "text",
-                text: { body: "🎉 Thank you! Your booking is confirmed." },
+                text: { body: "🎉 Thank you! Your booking is confirmed. 🏨" },
               });
+
+              // Optional: persist session data or booking in DB here
               session.step = "completed";
+              return new Response("OK");
+
             } else if (userInput === "confirm_no") {
               await sendMessage(from, {
                 type: "text",
-                text: { body: "Booking cancelled. To start again, send any message." },
+                text: { body: "❌ Booking cancelled. To start a new booking, just send a message anytime." },
               });
-              sessions.delete(from);
+
+              sessions.delete(from); // end session
+              return new Response("OK");
             }
-            break;
+
+            return new Response("OK");
 
           case "completed":
             await sendMessage(from, {
               type: "text",
               text: { body: "Thank you for using our service. To start a new booking, send any message." },
             });
+
             sessions.delete(from);
-            break;
+            return new Response("OK");
+
+          default:
+            await sendMessage(from, {
+              type: "text",
+              text: { body: "❗ Something went wrong. Please type 'hi' to start over." },
+            });
+
+            sessions.delete(from);
+            return new Response("OK");
         }
       }
     }
@@ -312,3 +330,4 @@ Promo Code: ${session.promo || "None"}`;
 
   return new Response("OK", { status: 200 });
 }
+
