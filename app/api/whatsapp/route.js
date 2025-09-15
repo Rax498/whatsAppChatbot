@@ -101,6 +101,9 @@ export async function POST(req) {
           message.interactive?.list_reply?.id ||
           message.text?.body?.trim().toLowerCase() ||
           "";
+console.log("From:", from);
+console.log("Session step:", session.step);
+console.log("User input:", userInput);
 
         switch (session.step) {
           case "greeting":
