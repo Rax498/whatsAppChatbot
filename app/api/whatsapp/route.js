@@ -48,25 +48,32 @@ const Rooms = [
   },
 ];
 
-// Changed this line from {} to Map()
 const sessions = new Map();
 
 async function sendMessage(to, messageBody) {
-  const res = await fetch(
-    `https://graph.facebook.com/v15.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to,
-        ...messageBody,
-      }),
-    }
-  );
+  await fetch(`https://graph.facebook.com/v15.0/${PHONE_NUMBER_ID}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      ...messageBody,
+    }),
+  });
+}
+
+// Normalize user input based on current step
+function extractUserInput(message, step) {
+  if (step === "locationSelected" || step === "roomSelected") {
+    return message.interactive?.list_reply?.id || "";
+  }
+  if (step === "askAdults" || step === "askChildren" || step === "confirmBooking") {
+    return message.interactive?.button_reply?.id || "";
+  }
+  return message.text?.body?.trim().toLowerCase() || "";
 }
 
 export async function GET(req) {
@@ -89,21 +96,13 @@ export async function POST(req) {
       for (const message of change.value?.messages || []) {
         const from = message.from;
 
-        // Use Map methods here
         let session = sessions.get(from);
         if (!session) {
           session = { step: "greeting" };
           sessions.set(from, session);
         }
 
-        const userInput =
-          message.interactive?.button_reply?.id ||
-          message.interactive?.list_reply?.id ||
-          message.text?.body?.trim().toLowerCase() ||
-          "";
-console.log("From:", from);
-console.log("Session step:", session.step);
-console.log("User input:", userInput);
+        const userInput = extractUserInput(message, session.step);
 
         switch (session.step) {
           case "greeting":
@@ -138,6 +137,7 @@ console.log("User input:", userInput);
             break;
 
           case "locationSelected":
+            if (!userInput) return new Response("OK", { status: 200 });
             for (const room of Rooms) {
               await sendMessage(from, {
                 type: "image",
@@ -174,16 +174,11 @@ console.log("User input:", userInput);
             break;
 
           case "roomSelected":
+            if (!userInput) return new Response("OK", { status: 200 });
             const selectedRoom = Rooms.find((r) => r.id === userInput);
-            if (!selectedRoom) {
-              await sendMessage(from, {
-                type: "text",
-                text: { body: "Please select a valid room from the list." },
-              });
-              break;
-            }
-            session.room = selectedRoom;
+            if (!selectedRoom) return new Response("OK", { status: 200 });
 
+            session.room = selectedRoom;
             await sendMessage(from, {
               type: "text",
               text: { body: "Please enter your check-in date (YYYY-MM-DD):" },
@@ -198,15 +193,13 @@ console.log("User input:", userInput);
                 type: "text",
                 text: { body: "Invalid date format. Please enter check-in date as YYYY-MM-DD:" },
               });
-              break;
+              return new Response("OK", { status: 200 });
             }
             session.checkIn = userInput;
-
             await sendMessage(from, {
               type: "text",
               text: { body: "Please enter your check-out date (YYYY-MM-DD):" },
             });
-
             session.step = "askCheckOut";
             break;
 
@@ -216,10 +209,9 @@ console.log("User input:", userInput);
                 type: "text",
                 text: { body: "Invalid date format. Please enter check-out date as YYYY-MM-DD:" },
               });
-              break;
+              return new Response("OK", { status: 200 });
             }
             session.checkOut = userInput;
-
             await sendMessage(from, {
               type: "interactive",
               interactive: {
@@ -233,21 +225,12 @@ console.log("User input:", userInput);
                 },
               },
             });
-
             session.step = "askAdults";
             break;
 
           case "askAdults":
-            if (!userInput.startsWith("adults_")) {
-              await sendMessage(from, {
-                type: "text",
-                text: { body: "Please select number of adults using the buttons." },
-              });
-              break;
-            }
-
+            if (!userInput.startsWith("adults_")) return new Response("OK", { status: 200 });
             session.adults = userInput.split("_")[1];
-
             await sendMessage(from, {
               type: "interactive",
               interactive: {
@@ -261,32 +244,21 @@ console.log("User input:", userInput);
                 },
               },
             });
-
             session.step = "askChildren";
             break;
 
           case "askChildren":
-            if (!userInput.startsWith("children_")) {
-              await sendMessage(from, {
-                type: "text",
-                text: { body: "Please select number of children using the buttons." },
-              });
-              break;
-            }
-
+            if (!userInput.startsWith("children_")) return new Response("OK", { status: 200 });
             session.children = userInput.split("_")[1];
-
             await sendMessage(from, {
               type: "text",
               text: { body: "Enter promo code (or type 'none'):" },
             });
-
             session.step = "askPromo";
             break;
 
           case "askPromo":
             session.promo = userInput === "none" ? null : userInput;
-
             const summary = `✅ Booking Summary:
 Room: ${session.room.title}
 Check-in: ${session.checkIn}
@@ -294,7 +266,6 @@ Check-out: ${session.checkOut}
 Adults: ${session.adults}
 Children: ${session.children}
 Promo Code: ${session.promo || "None"}`;
-
             await sendMessage(from, {
               type: "interactive",
               interactive: {
@@ -308,7 +279,6 @@ Promo Code: ${session.promo || "None"}`;
                 },
               },
             });
-
             session.step = "confirmBooking";
             break;
 
@@ -325,11 +295,6 @@ Promo Code: ${session.promo || "None"}`;
                 text: { body: "Booking cancelled. To start again, send any message." },
               });
               sessions.delete(from);
-            } else {
-              await sendMessage(from, {
-                type: "text",
-                text: { body: "Please confirm your booking by selecting Yes or No." },
-              });
             }
             break;
 
@@ -340,15 +305,7 @@ Promo Code: ${session.promo || "None"}`;
             });
             sessions.delete(from);
             break;
-
-          default:
-            await sendMessage(from, {
-              type: "text",
-              text: { body: "Please follow instructions." },
-            });
-            break;
         }
-        break; 
       }
     }
   }
