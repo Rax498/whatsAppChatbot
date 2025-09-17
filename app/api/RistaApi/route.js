@@ -46,6 +46,7 @@ No extra text.
       }),
     });
     const data = await res.json();
+    console.log('this is data'+data)
     const aiReplyRaw = data.choices?.[0]?.message?.content || "{}";
     const jsonMatch = aiReplyRaw.match(/{[\s\S]*}/);
     if (!jsonMatch) throw new Error("AI did not return valid JSON");
