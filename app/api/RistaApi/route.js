@@ -1,20 +1,25 @@
 import { TokenGen } from "@/app/utils/TokenGen";
-
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const RISTA_TOKEN = process.env.RISTA_TOKEN;
-const RISTA_SECURITY_KEY = process.env.RISTA_SECURITY_KEY;
 
 export async function RistaApi(userInput) {
   const history = [
     {
       role: "system",
       content: `
-You are an API intent router for a chatbot. Based on user input you have to decide which below API to call with necessary parameters (branch always BEN).
-Respond ONLY in JSON with these fields:
-1. "action": string — one of "fetchCatalog", "fetchResources", "fetchSoldOut"
-2. "params": object — parameters to pass to the API (branch, channel, etc.)
+You are an API intent router and friendly assistant for a restaurant chatbot.
+Respond ONLY in JSON: 
+- "action": "fetchCatalog", "fetchResources", "fetchSoldOut", or "smalltalk" (for greetings, chitchat, jokes, etc)
+- "params": object (for "smalltalk" leave as {})
+- "response": a friendly reply to user for "smalltalk", empty otherwise
+If user's message is not about menu, resources, or sold-out items, set action to "smalltalk".
 
-Example output:
+Example outputs:
+{
+  "action": "smalltalk",
+  "params": {},
+  "response": "I'm doing great! How can I help you with our restaurant services today?"
+}
 {
   "action": "fetchCatalog",
   "params": {
@@ -22,13 +27,12 @@ Example output:
     "channel": "Takeaway"
   }
 }
-      `,
+No extra text.
+      `
     },
     { role: "user", content: userInput },
   ];
-
   try {
-    // Step 1: Call OpenRouter AI
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -42,13 +46,11 @@ Example output:
       }),
     });
     const data = await res.json();
-    const aiReplyRaw = data.choices?.message?.content || "{}";
+    const aiReplyRaw = data.choices?.[0]?.message?.content || "{}";
     const jsonMatch = aiReplyRaw.match(/{[\s\S]*}/);
     if (!jsonMatch) throw new Error("AI did not return valid JSON");
-    const parsed = JSON.parse(jsonMatch);
-
-    // Step 2: Route the API Call
-    const { action, params } = parsed;
+    const parsed = JSON.parse(jsonMatch[0]);
+    const { action, params, response } = parsed;
     let ristaResponse;
     if (action === "fetchCatalog") {
       ristaResponse = await fetchCatalog(params);
@@ -56,36 +58,24 @@ Example output:
       ristaResponse = await fetchResources(params);
     } else if (action === "fetchSoldOut") {
       ristaResponse = await fetchSoldOut(params);
+    } else if (action === "smalltalk") {
+      ristaResponse = response || "I'm here to help!";
     } else {
       throw new Error("Unknown action from AI: " + action);
     }
-    // Respond as string; you may want to format for WhatsApp
-    return JSON.stringify(ristaResponse);
-  } catch (err) {
-    console.error("AI router error:", err);
-    return "Error handling your request.";
+    return typeof ristaResponse === "string"
+      ? ristaResponse
+      : JSON.stringify(ristaResponse);
+  } catch {
+    return "Sorry, error handling your request.";
   }
 }
 
-// --- Rista API methods w/ fresh JWT token per request ---
-async function fetchSoldOut({ branch }) {
-  const jwtToken = TokenGen();
-  const apiUrl = `https://api.ristaapps.com/v1/items/soldout?branch=${branch}`;
-  const res = await fetch(apiUrl, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${jwtToken}`,
-      "x-api-key": RISTA_TOKEN,
-      "x-api-token": jwtToken,
-    },
-  });
-  if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
-  return res.json();
-}
-
 async function fetchCatalog({ branch, channel }) {
+  const _branch = branch || "BEN";
+  const _channel = channel || "Takeaway";
   const jwtToken = TokenGen();
-  const apiUrl = `https://api.ristaapps.com/v1/catalog?branch=${branch}&channel=${channel}`;
+  const apiUrl = `https://api.ristaapps.com/v1/catalog?branch=${_branch}&channel=${_channel}`;
   const res = await fetch(apiUrl, {
     method: "GET",
     headers: {
@@ -99,8 +89,25 @@ async function fetchCatalog({ branch, channel }) {
 }
 
 async function fetchResources({ branch }) {
+  const _branch = branch || "BEN";
   const jwtToken = TokenGen();
-  const apiUrl = `https://api.ristaapps.com/v1/resource?branch=${branch}`;
+  const apiUrl = `https://api.ristaapps.com/v1/resource?branch=${_branch}`;
+  const res = await fetch(apiUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${jwtToken}`,
+      "x-api-key": RISTA_TOKEN,
+      "x-api-token": jwtToken,
+    },
+  });
+  if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
+  return res.json();
+}
+
+async function fetchSoldOut({ branch }) {
+  const _branch = branch || "BEN";
+  const jwtToken = TokenGen();
+  const apiUrl = `https://api.ristaapps.com/v1/items/soldout?branch=${_branch}`;
   const res = await fetch(apiUrl, {
     method: "GET",
     headers: {
