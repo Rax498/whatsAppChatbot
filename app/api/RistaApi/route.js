@@ -41,7 +41,7 @@ No extra text.
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-exp:free",
+        model: "openrouter/sonoma-sky-alpha",
         messages: history,
         temperature: 0.1,
       }),
