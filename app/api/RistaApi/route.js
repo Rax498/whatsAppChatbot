@@ -78,7 +78,7 @@ No extra text.
 
 async function fetchCatalog({ branch, channel }) {
   const _branch = branch || "BEN";
-  const _channel = channel || "Takeaway";
+  const _channel = channel;
   const jwtToken = TokenGen();
   const apiUrl = `https://api.ristaapps.com/v1/catalog?branch=${_branch}&channel=${_channel}`;
   const res = await fetch(apiUrl, {
@@ -90,9 +90,10 @@ async function fetchCatalog({ branch, channel }) {
     },
   });
   if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
-  return res.json();
+  const jsonData = await res.json();
+  const result = formatCatalog(jsonData);
+  return result;
 }
-
 async function fetchResources({ branch }) {
   const _branch = branch || "BEN";
   const jwtToken = TokenGen();
