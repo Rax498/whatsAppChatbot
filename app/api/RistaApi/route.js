@@ -46,8 +46,9 @@ No extra text.
         temperature: 0.1,
       }),
     });
-    
+        
       const data = await res.json();
+      console.log('data',data)
       const aiReplyRaw = data.choices?.[0]?.message?.content || "{}";
       const jsonMatch = aiReplyRaw.match(/{[\s\S]*}/);
       if (!jsonMatch) throw new Error("AI did not return valid JSON");
