@@ -45,13 +45,14 @@ No extra text.
         temperature: 0.1,
       }),
     });
+    console.log('raw'+res)
     const data = await res.json();
-    console.log('this is data'+data)
+    
     const aiReplyRaw = data.choices?.[0]?.message?.content || "{}";
     const jsonMatch = aiReplyRaw.match(/{[\s\S]*}/);
     if (!jsonMatch) throw new Error("AI did not return valid JSON");
     const parsed = JSON.parse(jsonMatch[0]);
-    console.log(parsed)
+    console.log(aiReplyRaw)
     const { action, params, response } = parsed;
     let ristaResponse;
     if (action === "fetchCatalog") {
