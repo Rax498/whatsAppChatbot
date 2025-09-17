@@ -4,6 +4,7 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const RISTA_TOKEN = process.env.RISTA_TOKEN;
 const RISTA_SECURITY_KEY = process.env.RISTA_SECURITY_KEY;
+import { RistaApi } from "../RistaApi/route";
 
 // WhatsApp GET webhook verification
 export async function GET(req) {
