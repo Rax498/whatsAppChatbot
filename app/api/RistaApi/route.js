@@ -46,14 +46,14 @@ No extra text.
         temperature: 0.1,
       }),
     });
-
-    const data = await res.json();
     
-    const aiReplyRaw = data.choices?.message?.content || "{}";
-    const jsonMatch = aiReplyRaw.match(/{[\s\S]*}/);
-    if (!jsonMatch) throw new Error("AI did not return valid JSON");
-    const parsed = JSON.parse(jsonMatch[0]);
-    console.log(aiReplyRaw)
+      const data = await res.json();
+      const aiReplyRaw = data.choices?.[0]?.message?.content || "{}";
+      const jsonMatch = aiReplyRaw.match(/{[\s\S]*}/);
+      if (!jsonMatch) throw new Error("AI did not return valid JSON");
+      const parsed = JSON.parse(jsonMatch[0]);
+      console.log(aiReplyRaw);
+
     const { action, params, response } = parsed;
     let ristaResponse;
     if (action === "fetchCatalog") {
