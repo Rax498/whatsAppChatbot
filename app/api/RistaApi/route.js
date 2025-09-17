@@ -3,6 +3,7 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const RISTA_TOKEN = process.env.RISTA_TOKEN;
 
 export async function RistaApi(userInput) {
+  console.log(userInput)
   const history = [
     {
       role: "system",
@@ -45,10 +46,10 @@ No extra text.
         temperature: 0.1,
       }),
     });
-    console.log('raw'+res)
+
     const data = await res.json();
     
-    const aiReplyRaw = data.choices?.[0]?.message?.content || "{}";
+    const aiReplyRaw =aiReplyRaw = data.choices?.message?.content || "{}";
     const jsonMatch = aiReplyRaw.match(/{[\s\S]*}/);
     if (!jsonMatch) throw new Error("AI did not return valid JSON");
     const parsed = JSON.parse(jsonMatch[0]);
