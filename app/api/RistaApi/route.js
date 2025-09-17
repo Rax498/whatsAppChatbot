@@ -1,5 +1,5 @@
 import { TokenGen } from "@/app/utils/TokenGen";
-import { formatCatalog } from "@/app/utils/Format_Utils";
+import { formatCatalog,formatResources } from "@/app/utils/Format_Utils";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const RISTA_TOKEN = process.env.RISTA_TOKEN;
 
@@ -92,6 +92,7 @@ async function fetchCatalog({ branch, channel }) {
   });
   if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
   const jsonData = await res.json();
+  
   console.log(jsonData)
   const result = formatCatalog(jsonData);
   console.log('result',result)
@@ -110,7 +111,10 @@ async function fetchResources({ branch }) {
     },
   });
   if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
-  return res.json();
+
+  const jsonData = await res.json();
+  const result = formatResources(jsonData);
+  return result;
 }
 
 async function fetchSoldOut({ branch }) {
