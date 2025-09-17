@@ -51,7 +51,7 @@ export const formatResources = (resources) => {
   const lines = ["Available Resources:"];
   for (const res of resources) {
     if (res.status === "Active") {
-      lines.push(`- ${res.name} (Capacity: ${res.capacity})`);
+      lines.push( `${res.name} | resourceId: ${res.resourceId} | Capacity: ${res.capacity}`);
     }
   }
   return lines.join("\n");
