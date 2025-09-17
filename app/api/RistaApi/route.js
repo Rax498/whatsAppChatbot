@@ -49,7 +49,7 @@ No extra text.
 
     const data = await res.json();
     
-    const aiReplyRaw =aiReplyRaw = data.choices?.message?.content || "{}";
+    const aiReplyRaw = data.choices?.message?.content || "{}";
     const jsonMatch = aiReplyRaw.match(/{[\s\S]*}/);
     if (!jsonMatch) throw new Error("AI did not return valid JSON");
     const parsed = JSON.parse(jsonMatch[0]);
