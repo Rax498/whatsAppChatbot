@@ -50,6 +50,7 @@ No extra text.
     const jsonMatch = aiReplyRaw.match(/{[\s\S]*}/);
     if (!jsonMatch) throw new Error("AI did not return valid JSON");
     const parsed = JSON.parse(jsonMatch[0]);
+    console.log(parsed)
     const { action, params, response } = parsed;
     let ristaResponse;
     if (action === "fetchCatalog") {
@@ -66,8 +67,8 @@ No extra text.
     return typeof ristaResponse === "string"
       ? ristaResponse
       : JSON.stringify(ristaResponse);
-  } catch {
-    return "Sorry, error handling your request.";
+  } catch(error) {
+    return new Response("handling error",error);
   }
 }
 
