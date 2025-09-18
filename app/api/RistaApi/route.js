@@ -14,8 +14,8 @@ Respond ONLY in JSON:
 - "action": "fetchCatalog", "fetchResources", "fetchSoldOut", or "smalltalk" (for greetings, chitchat, jokes, etc)
 - "params": object (for "smalltalk" leave as {})
 - "response": a friendly reply to user for "smalltalk", empty otherwise
-If user's message is not about menu, resources, or sold-out items, set action to "smalltalk".
-
+If user's message is not about menu, resources, sold-out items,or not food/restaurent related set action to "smalltalk" and give apropriate response.
+not default branch is BEN if user does not specify
 Example outputs:
 {
   "action": "smalltalk",
