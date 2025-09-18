@@ -15,7 +15,8 @@ Respond ONLY in JSON:
 - "params": object (for "smalltalk" leave as {})
 - "response": a friendly reply to user for "smalltalk", empty otherwise
 If user's message is not about menu, resources, sold-out items,or not food/restaurent related set action to "smalltalk" and give apropriate response.
-not default branch is BEN if user does not specify
+note default branch is BEN if user does not specify
+channel = "Takeaway","zomato"..etc
 Example outputs:
 {
   "action": "smalltalk",
