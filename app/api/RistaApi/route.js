@@ -65,6 +65,7 @@ No extra text.
       ristaResponse = await fetchResources(params);
     } else if (action === "fetchSoldOut") {
       ristaResponse = await fetchSoldOut(params);
+      console.log(ristaResponse)
     } else if (action === "smalltalk") {
       ristaResponse = response || "I'm here to help!";
     } else {
