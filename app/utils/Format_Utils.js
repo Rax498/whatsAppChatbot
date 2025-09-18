@@ -51,8 +51,16 @@ export const formatResources = (resources) => {
   const lines = ["Available Resources:"];
   for (const res of resources) {
     if (res.status === "Active") {
-      lines.push( `${res.name} | resourceId: ${res.resourceId} | Capacity: ${res.capacity}`);
+      lines.push( `${res.name} | TableId: ${res.resourceId} | Capacity: ${res.capacity}`);
     }
   }
   return lines.join("\n");
+};
+// ---Formating soldoutItems----
+export const formatSoldout = (TableData) => {
+  const TableMap = [];
+  for (const tables of TableData.data) {
+    TableMap.push(`Name: ${tables.shortName} | code: ${tables.skuCode}`);
+  }
+  return TableData.join("\n");
 };
