@@ -1,5 +1,5 @@
 import { TokenGen } from "@/app/utils/TokenGen";
-import { formatCatalog,formatResources } from "@/app/utils/Format_Utils";
+import { formatCatalog,formatResources,formatSoldout } from "@/app/utils/Format_Utils";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const RISTA_TOKEN = process.env.RISTA_TOKEN;
 
@@ -130,5 +130,7 @@ async function fetchSoldOut({ branch }) {
     },
   });
   if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
-  return res.json();
+ const jsonData = res.json();
+  const result = formatSoldout(jsonData);
+  return result;
 }
