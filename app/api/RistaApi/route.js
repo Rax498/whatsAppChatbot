@@ -132,6 +132,8 @@ async function fetchSoldOut({ branch }) {
   });
   if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
  const jsonData =await res.json();
+  console.log("Json",jsonData)
   const result = formatSoldout(jsonData);
+  console.log("result",result)
   return result;
 }
