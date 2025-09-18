@@ -62,5 +62,7 @@ export const formatSoldout = (TableData) => {
   for (const tables of TableData.data) {
     TableMap.push(`Name: ${tables.shortName} | code: ${tables.skuCode}`);
   }
-  return TableData.join("\n");
+  const Tdata=TableData.join("\n");
+  console.log(Tdata)
+  return Tdata;
 };
