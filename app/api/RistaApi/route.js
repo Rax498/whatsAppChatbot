@@ -10,23 +10,23 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const RISTA_TOKEN = process.env.RISTA_TOKEN;
 
 export async function RistaApi(userInput) {
-  console.log("User Input:", userInput);
-
+  // Conversation history sent to AI intent router
   const history = [
     {
       role: "system",
       content: `
 You are an API intent router and friendly assistant for a restaurant chatbot.
 Respond ONLY in JSON with:
-- "action": "fetchCatalog", "fetchResources", "fetchSoldOut", "fetchSalesToday" or "smalltalk"
-- "params": other details like date(YYY-MM-DD),invoiceId,productId,Zomato,etc.. ex {date,swiggy..} 
-- "response": a friendly reply to user for "smalltalk", empty otherwise.
+- "action": one of [fetchCatalog, fetchResources, fetchSoldOut, fetchSalesToday, smalltalk]
+- "params": object with details like date, invoiceId, productId, channel, etc.
+- "response": friendly text reply (only for smalltalk), empty otherwise.
       `,
     },
     { role: "user", content: userInput },
   ];
 
   try {
+    // Get AI intent routing JSON response
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -45,24 +45,33 @@ Respond ONLY in JSON with:
     const jsonMatch = aiReplyRaw.match(/{[\s\S]*}/);
     if (!jsonMatch) throw new Error("AI did not return valid JSON");
     const parsed = JSON.parse(jsonMatch[0]);
-    const { action, params, response } = parsed;
+    const { action, params = {}, response } = parsed;
 
-    // Handle API action
+    // Initialize variable for final bot reply
     let ristaResponse;
 
+    // Route API actions cleanly
     switch (action) {
-      case "fetchCatalog":
-        ristaResponse = await fetchCatalog(params);
+      case "fetchCatalog": {
+        const catalogData = await fetchCatalog(params);
+        ristaResponse = await summarizeData(catalogData, "catalog", userInput, params);
         break;
-      case "fetchResources":
-        ristaResponse = await fetchResources(params);
+      }
+      case "fetchResources": {
+        const resourcesData = await fetchResources(params);
+        ristaResponse = await summarizeData(resourcesData, "resources", userInput, params);
         break;
-      case "fetchSoldOut":
-        ristaResponse = await fetchSoldOut(params);
+      }
+      case "fetchSoldOut": {
+        const soldOutData = await fetchSoldOut(params);
+        ristaResponse = await summarizeData(soldOutData, "sold out items", userInput, params);
         break;
-      case "fetchSalesToday":
-        ristaResponse = await fetchSalesToday(params);
+      }
+      case "fetchSalesToday": {
+        const salesData = await fetchSalesToday(params);
+        ristaResponse = await summarizeData(salesData, "sales summary", userInput, params);
         break;
+      }
       case "smalltalk":
         ristaResponse = response || "I'm here to help!";
         break;
@@ -70,17 +79,28 @@ Respond ONLY in JSON with:
         throw new Error("Unknown action from AI: " + action);
     }
 
-    return typeof ristaResponse === "string"
-      ? ristaResponse
-      : JSON.stringify(ristaResponse);
+    // Return string response or stringify object response
+    return typeof ristaResponse === "string" ? ristaResponse : JSON.stringify(ristaResponse);
   } catch (error) {
     console.error("RistaApi error:", error);
-    // Return a simple user-friendly error message
-    return `Sorry, something went wrong. Please try again later.`;
+    return "Sorry, something went wrong. Please try again later.";
   }
 }
 
-async function summarizeData(data, dataType) {
+// Summarize data respecting data type, user input, and params
+async function summarizeData(data, dataType, userInput, params) {
+  const paramInfo =
+    params && Object.keys(params).length > 0
+      ? `using these parameters: ${JSON.stringify(params)}`
+      : "";
+
+  const systemContent = `
+You are a summarizer. Summarize the following ${dataType} data in concise bullet points.
+Keep the reply simple, without symbols, suitable for WhatsApp chat.
+Include user context: "${userInput}"
+${paramInfo}
+  `.trim();
+
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -91,29 +111,20 @@ async function summarizeData(data, dataType) {
       model: "openrouter/sonoma-sky-alpha",
       temperature: 0.2,
       messages: [
-        {
-          role: "system",
-          content: `You are a summarizer. Summarize the following ${dataType} data in concise bullet points using following info${userInput} no symbols in plain text simple word for whats app chat`,
-        },
-        {
-          role: "user",
-          content: JSON.stringify(data),
-        },
+        { role: "system", content: systemContent },
+        { role: "user", content: JSON.stringify(data) },
       ],
     }),
   });
 
   const json = await res.json();
-  const summary =
-    json.choices?.[0]?.message?.content || "No summary available.";
-  return summary;
+  return json.choices?.[0]?.message?.content || "No summary available.";
 }
 
+// Fetch functions -- clean with default params
 async function fetchCatalog({ branch = "BEN", channel }) {
   const jwtToken = TokenGen();
-  const apiUrl = `https://api.ristaapps.com/v1/catalog?branch=${branch}&channel=${
-    channel || ""
-  }`;
+  const apiUrl = `https://api.ristaapps.com/v1/catalog?branch=${branch}&channel=${channel || ""}`;
   const res = await fetch(apiUrl, {
     method: "GET",
     headers: {
@@ -122,10 +133,8 @@ async function fetchCatalog({ branch = "BEN", channel }) {
       "x-api-token": jwtToken,
     },
   });
-
   if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
-  const jsonData = await res.json();
-  return summarizeData(jsonData, "catalog");
+  return await res.json();
 }
 
 async function fetchResources({ branch = "BEN" }) {
@@ -139,10 +148,8 @@ async function fetchResources({ branch = "BEN" }) {
       "x-api-token": jwtToken,
     },
   });
-
   if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
-  const jsonData = await res.json();
-  return summarizeData(jsonData, "resources");
+  return await res.json();
 }
 
 async function fetchSoldOut({ branch = "BEN" }) {
@@ -156,10 +163,8 @@ async function fetchSoldOut({ branch = "BEN" }) {
       "x-api-token": jwtToken,
     },
   });
-
   if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
-  const jsonData = await res.json();
-  return summarizeData(jsonData, "sold out items");
+  return await res.json();
 }
 
 async function fetchSalesToday({ branch = "BEN" }) {
@@ -174,8 +179,6 @@ async function fetchSalesToday({ branch = "BEN" }) {
       "x-api-token": jwtToken,
     },
   });
-
-  if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-  const jsonData = await res.json();
-  return summarizeData(jsonData, "sales summary");
+  if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
+  return await res.json();
 }
