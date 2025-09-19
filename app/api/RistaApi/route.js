@@ -1,9 +1,3 @@
-import {
-  formatCatalog,
-  formatResources,
-  formatSoldout,
-  formatSalesToday,
-} from "@/app/utils/Format_Utils";
 import { TokenGen } from "@/app/utils/TokenGen";
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -17,8 +11,9 @@ export async function RistaApi(userInput) {
 You are an API intent router and friendly assistant for a restaurant chatbot.
 Respond ONLY in JSON with:
 - "action": one of [fetchCatalog, fetchResources, fetchSoldOut, fetchSalesToday, fetchSalesSummary, fetchInventoryAudit, fetchInventoryTransferReturn, fetchInventoryStoreItems, fetchInventorySupplierList, smalltalk]
-- "params": object with details like date, invoiceId, productId, branch, channel, lastKey, supplierCode, etc.
+- "params": object with details like branchcode, date, invoiceId, productId, branch, channel, lastKey, supplierCode, etc.
 - "response": friendly text reply (only for smalltalk), empty otherwise.
+for branch always use brach code like default "BEN"
 Example outputs:
 {
   "action": "smalltalk",
@@ -123,7 +118,9 @@ No extra text.
         break;
       }
       case "fetchInventoryTransferReturn": {
-        const transferReturnData = await fetchInventoryTransferReturnPage(params);
+        const transferReturnData = await fetchInventoryTransferReturnPage(
+          params
+        );
         ristaResponse = await summarizeData(
           transferReturnData,
           "inventory transfer return page",
@@ -310,7 +307,11 @@ async function fetchInventoryAuditPage({ branch = "BEN", day, lastKey }) {
   return await res.json();
 }
 
-async function fetchInventoryTransferReturnPage({ branch = "BEN", day, lastKey }) {
+async function fetchInventoryTransferReturnPage({
+  branch = "BEN",
+  day,
+  lastKey,
+}) {
   const jwtToken = TokenGen();
   const auditDay = day || new Date().toISOString().slice(0, 10);
   let apiUrl = `https://api.ristaapps.com/v1/inventory/transfer_return/page?branch=${branch}&day=${auditDay}`;
