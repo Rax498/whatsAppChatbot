@@ -19,7 +19,7 @@ export async function RistaApi(userInput) {
 You are an API intent router and friendly assistant for a restaurant chatbot.
 Respond ONLY in JSON with:
 - "action": "fetchCatalog", "fetchResources", "fetchSoldOut", "fetchSalesToday" or "smalltalk"
-- "params": object
+- "params": other details like date(YYY-MM-DD),invoiceId,productId,Zomato,etc.. ex {date,swiggy..} 
 - "response": a friendly reply to user for "smalltalk", empty otherwise.
       `,
     },
@@ -93,7 +93,7 @@ async function summarizeData(data, dataType) {
       messages: [
         {
           role: "system",
-          content: `You are a summarizer. Summarize the following ${dataType} data in concise bullet points.`,
+          content: `You are a summarizer. Summarize the following ${dataType} data in concise bullet points using following info${userInput} no symbols in plain text simple word for whats app chat`,
         },
         {
           role: "user",
