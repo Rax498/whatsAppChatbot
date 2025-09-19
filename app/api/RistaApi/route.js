@@ -10,15 +10,14 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const RISTA_TOKEN = process.env.RISTA_TOKEN;
 
 export async function RistaApi(userInput) {
-  // Conversation history sent to AI intent router
   const history = [
     {
       role: "system",
       content: `
 You are an API intent router and friendly assistant for a restaurant chatbot.
 Respond ONLY in JSON with:
-- "action": one of [fetchCatalog, fetchResources, fetchSoldOut, fetchSalesToday, smalltalk]
-- "params": object with details like date, invoiceId, productId, channel, etc.
+- "action": one of [fetchCatalog, fetchResources, fetchSoldOut, fetchSalesToday, fetchSalesSummary, fetchInventoryAudit, fetchInventoryTransferReturn, fetchInventoryStoreItems, fetchInventorySupplierList, smalltalk]
+- "params": object with details like date, invoiceId, productId, branch, channel, lastKey, supplierCode, etc.
 - "response": friendly text reply (only for smalltalk), empty otherwise.
 Example outputs:
 {
@@ -40,7 +39,6 @@ No extra text.
   ];
 
   try {
-    // Get AI intent routing JSON response
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -61,10 +59,8 @@ No extra text.
     const parsed = JSON.parse(jsonMatch[0]);
     const { action, params = {}, response } = parsed;
 
-    // Initialize variable for final bot reply
     let ristaResponse;
 
-    // Route API actions cleanly
     switch (action) {
       case "fetchCatalog": {
         const catalogData = await fetchCatalog(params);
@@ -106,14 +102,65 @@ No extra text.
         );
         break;
       }
-      case "smalltalk":
+      case "fetchSalesSummary": {
+        const salesSummaryData = await fetchSalesSummary(params);
+        ristaResponse = await summarizeData(
+          salesSummaryData,
+          "sales summary",
+          userInput,
+          params
+        );
+        break;
+      }
+      case "fetchInventoryAudit": {
+        const auditData = await fetchInventoryAuditPage(params);
+        ristaResponse = await summarizeData(
+          auditData,
+          "inventory audit page",
+          userInput,
+          params
+        );
+        break;
+      }
+      case "fetchInventoryTransferReturn": {
+        const transferReturnData = await fetchInventoryTransferReturnPage(params);
+        ristaResponse = await summarizeData(
+          transferReturnData,
+          "inventory transfer return page",
+          userInput,
+          params
+        );
+        break;
+      }
+      case "fetchInventoryStoreItems": {
+        const storeItemsData = await fetchInventoryStoreItems(params);
+        ristaResponse = await summarizeData(
+          storeItemsData,
+          "inventory store items",
+          userInput,
+          params
+        );
+        break;
+      }
+      case "fetchInventorySupplierList": {
+        const supplierListData = await fetchInventorySupplierList(params);
+        ristaResponse = await summarizeData(
+          supplierListData,
+          "inventory supplier list",
+          userInput,
+          params
+        );
+        break;
+      }
+      case "smalltalk": {
         ristaResponse = response || "I'm here to help!";
         break;
-      default:
+      }
+      default: {
         throw new Error("Unknown action from AI: " + action);
+      }
     }
 
-    // Return string response or stringify object response
     return typeof ristaResponse === "string"
       ? ristaResponse
       : JSON.stringify(ristaResponse);
@@ -123,7 +170,6 @@ No extra text.
   }
 }
 
-// Summarize data respecting data type, user input, and params
 async function summarizeData(data, dataType, userInput, params) {
   const paramInfo =
     params && Object.keys(params).length > 0
@@ -135,7 +181,6 @@ Summarize the following ${dataType} based on what the user asked: "${userInput}"
 Use simple, natural language like a human. Keep it short, clear, and clean — easy to read on WhatsApp.
 Avoid special symbols or markdown (except ₹ or $ if needed). No technical terms. Just a helpful, friendly reply.
 `.trim();
-
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -157,7 +202,8 @@ Avoid special symbols or markdown (except ₹ or $ if needed). No technical term
   return json.choices?.[0]?.message?.content || "No summary available.";
 }
 
-// Fetch functions -- clean with default params
+// Your fetch functions with correct indentation
+
 async function fetchCatalog({ branch = "BEN", channel }) {
   const jwtToken = TokenGen();
   const apiUrl = `https://api.ristaapps.com/v1/catalog?branch=${branch}&channel=${
@@ -218,5 +264,116 @@ async function fetchSalesToday({ branch = "BEN" }) {
     },
   });
   if (!res.ok) throw new Error(`Rista API error: ${res.status}`);
+  return await res.json();
+}
+
+async function fetchSalesSummary({ branch = "BEN", date }) {
+  const jwtToken = TokenGen();
+  const day = date || new Date().toISOString().slice(0, 10);
+  const apiUrl = `https://api.ristaapps.com/v1/analytics/sales/summary?branch=${branch}&date=${day}`;
+  const res = await fetch(apiUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${jwtToken}`,
+      "x-api-key": RISTA_TOKEN,
+      "x-api-token": jwtToken,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("Rista API error:", res.status, text);
+    throw new Error(`Rista API error: ${res.status} ${text}`);
+  }
+  return await res.json();
+}
+
+async function fetchInventoryAuditPage({ branch = "BEN", day, lastKey }) {
+  const jwtToken = TokenGen();
+  const auditDay = day || new Date().toISOString().slice(0, 10);
+  let apiUrl = `https://api.ristaapps.com/v1/inventory/audit/page?branch=${branch}&day=${auditDay}`;
+  if (lastKey) {
+    apiUrl += `&lastKey=${lastKey}`;
+  }
+  const res = await fetch(apiUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${jwtToken}`,
+      "x-api-key": RISTA_TOKEN,
+      "x-api-token": jwtToken,
+    },
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error("Rista API error:", res.status, errorText);
+    throw new Error(`Rista API error: ${res.status} ${errorText}`);
+  }
+  return await res.json();
+}
+
+async function fetchInventoryTransferReturnPage({ branch = "BEN", day, lastKey }) {
+  const jwtToken = TokenGen();
+  const auditDay = day || new Date().toISOString().slice(0, 10);
+  let apiUrl = `https://api.ristaapps.com/v1/inventory/transfer_return/page?branch=${branch}&day=${auditDay}`;
+  if (lastKey) {
+    apiUrl += `&lastKey=${lastKey}`;
+  }
+  const res = await fetch(apiUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${jwtToken}`,
+      "x-api-key": RISTA_TOKEN,
+      "x-api-token": jwtToken,
+    },
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error("Rista API error:", res.status, errorText);
+    throw new Error(`Rista API error: ${res.status} ${errorText}`);
+  }
+  return await res.json();
+}
+
+async function fetchInventoryStoreItems({ branch = "BEN", day }) {
+  const jwtToken = TokenGen();
+  const auditDay = day || new Date().toISOString().slice(0, 10);
+  const apiUrl = `https://api.ristaapps.com/v1/inventory/store/items?branch=${branch}&day=${auditDay}`;
+  const res = await fetch(apiUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${jwtToken}`,
+      "x-api-key": RISTA_TOKEN,
+      "x-api-token": jwtToken,
+    },
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error("Rista API error:", res.status, errorText);
+    throw new Error(`Rista API error: ${res.status} ${errorText}`);
+  }
+  return await res.json();
+}
+
+async function fetchInventorySupplierList({ branch, supplierCode }) {
+  const jwtToken = TokenGen();
+  let apiUrl = "https://api.ristaapps.com/v1/inventory/supplier/list";
+  const queryParams = [];
+  if (branch) queryParams.push(`branch=${branch}`);
+  if (supplierCode) queryParams.push(`supplierCode=${supplierCode}`);
+  if (queryParams.length > 0) {
+    apiUrl += "?" + queryParams.join("&");
+  }
+  const res = await fetch(apiUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${jwtToken}`,
+      "x-api-key": RISTA_TOKEN,
+      "x-api-token": jwtToken,
+    },
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error("Rista API error:", res.status, errorText);
+    throw new Error(`Rista API error: ${res.status} ${errorText}`);
+  }
   return await res.json();
 }
