@@ -13,7 +13,7 @@ Respond ONLY in JSON with:
 - "action": one of [fetchCatalog, fetchResources, fetchSoldOut, fetchSalesToday, fetchSalesSummary, fetchInventoryAudit, fetchInventoryTransferReturn, fetchInventoryStoreItems, fetchInventorySupplierList, smalltalk]
 - "params": object with details like branchcode, date, invoiceId, productId, branch, channel, lastKey, supplierCode, etc.
 - "response": friendly text reply (only for smalltalk), empty otherwise.
-for branch always use brach code like default "BEN"
+for branch always use branch code like default "BEN"
 Example outputs:
 {
   "action": "smalltalk",
@@ -199,9 +199,11 @@ Avoid special symbols or markdown (except ₹ or $ if needed). No technical term
   return json.choices?.[0]?.message?.content || "No summary available.";
 }
 
-// Your fetch functions with correct indentation
+// Updated fetch functions with default parameter handling
 
-async function fetchCatalog({ branch = "BEN", channel }) {
+async function fetchCatalog(params = {}) {
+  const branch = params.branch || "BEN";
+  const channel = params.channel;
   const jwtToken = TokenGen();
   const apiUrl = `https://api.ristaapps.com/v1/catalog?branch=${branch}&channel=${
     channel || ""
@@ -218,7 +220,8 @@ async function fetchCatalog({ branch = "BEN", channel }) {
   return await res.json();
 }
 
-async function fetchResources({ branch = "BEN" }) {
+async function fetchResources(params = {}) {
+  const branch = params.branch || "BEN";
   const jwtToken = TokenGen();
   const apiUrl = `https://api.ristaapps.com/v1/resource?branch=${branch}`;
   const res = await fetch(apiUrl, {
@@ -233,7 +236,8 @@ async function fetchResources({ branch = "BEN" }) {
   return await res.json();
 }
 
-async function fetchSoldOut({ branch = "BEN" }) {
+async function fetchSoldOut(params = {}) {
+  const branch = params.branch || "BEN";
   const jwtToken = TokenGen();
   const apiUrl = `https://api.ristaapps.com/v1/items/soldout?branch=${branch}`;
   const res = await fetch(apiUrl, {
@@ -248,7 +252,8 @@ async function fetchSoldOut({ branch = "BEN" }) {
   return await res.json();
 }
 
-async function fetchSalesToday({ branch = "BEN" }) {
+async function fetchSalesToday(params = {}) {
+  const branch = params.branch || "BEN";
   const today = new Date().toISOString().slice(0, 10);
   const jwtToken = TokenGen();
   const apiUrl = `https://api.ristaapps.com/v1/sales/summary?branch=${branch}&day=${today}`;
@@ -264,9 +269,10 @@ async function fetchSalesToday({ branch = "BEN" }) {
   return await res.json();
 }
 
-async function fetchSalesSummary({ branch = "BEN", date }) {
+async function fetchSalesSummary(params = {}) {
+  const branch = params.branch || "BEN";
+  const day = params.date || new Date().toISOString().slice(0, 10);
   const jwtToken = TokenGen();
-  const day = date || new Date().toISOString().slice(0, 10);
   const apiUrl = `https://api.ristaapps.com/v1/analytics/sales/summary?branch=${branch}&date=${day}`;
   const res = await fetch(apiUrl, {
     method: "GET",
@@ -284,10 +290,12 @@ async function fetchSalesSummary({ branch = "BEN", date }) {
   return await res.json();
 }
 
-async function fetchInventoryAuditPage({ branch = "BEN", day, lastKey }) {
+async function fetchInventoryAuditPage(params = {}) {
+  const branch = params.branch || "BEN";
+  const day = params.day || new Date().toISOString().slice(0, 10);
+  const lastKey = params.lastKey;
   const jwtToken = TokenGen();
-  const auditDay = day || new Date().toISOString().slice(0, 10);
-  let apiUrl = `https://api.ristaapps.com/v1/inventory/audit/page?branch=${branch}&day=${auditDay}`;
+  let apiUrl = `https://api.ristaapps.com/v1/inventory/audit/page?branch=${branch}&day=${day}`;
   if (lastKey) {
     apiUrl += `&lastKey=${lastKey}`;
   }
@@ -307,14 +315,12 @@ async function fetchInventoryAuditPage({ branch = "BEN", day, lastKey }) {
   return await res.json();
 }
 
-async function fetchInventoryTransferReturnPage({
-  branch = "BEN",
-  day,
-  lastKey,
-}) {
+async function fetchInventoryTransferReturnPage(params = {}) {
+  const branch = params.branch || "BEN";
+  const day = params.day || new Date().toISOString().slice(0, 10);
+  const lastKey = params.lastKey;
   const jwtToken = TokenGen();
-  const auditDay = day || new Date().toISOString().slice(0, 10);
-  let apiUrl = `https://api.ristaapps.com/v1/inventory/transfer_return/page?branch=${branch}&day=${auditDay}`;
+  let apiUrl = `https://api.ristaapps.com/v1/inventory/transfer_return/page?branch=${branch}&day=${day}`;
   if (lastKey) {
     apiUrl += `&lastKey=${lastKey}`;
   }
@@ -334,10 +340,11 @@ async function fetchInventoryTransferReturnPage({
   return await res.json();
 }
 
-async function fetchInventoryStoreItems({ branch = "BEN", day }) {
+async function fetchInventoryStoreItems(params = {}) {
+  const branch = params.branch || "BEN";
+  const day = params.day || new Date().toISOString().slice(0, 10);
   const jwtToken = TokenGen();
-  const auditDay = day || new Date().toISOString().slice(0, 10);
-  const apiUrl = `https://api.ristaapps.com/v1/inventory/store/items?branch=${branch}&day=${auditDay}`;
+  const apiUrl = `https://api.ristaapps.com/v1/inventory/store/items?branch=${branch}&day=${day}`;
   const res = await fetch(apiUrl, {
     method: "GET",
     headers: {
@@ -354,7 +361,9 @@ async function fetchInventoryStoreItems({ branch = "BEN", day }) {
   return await res.json();
 }
 
-async function fetchInventorySupplierList({ branch, supplierCode }) {
+async function fetchInventorySupplierList(params = {}) {
+  const branch = params.branch;
+  const supplierCode = params.supplierCode;
   const jwtToken = TokenGen();
   let apiUrl = "https://api.ristaapps.com/v1/inventory/supplier/list";
   const queryParams = [];
