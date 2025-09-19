@@ -20,6 +20,20 @@ Respond ONLY in JSON with:
 - "action": one of [fetchCatalog, fetchResources, fetchSoldOut, fetchSalesToday, smalltalk]
 - "params": object with details like date, invoiceId, productId, channel, etc.
 - "response": friendly text reply (only for smalltalk), empty otherwise.
+Example outputs:
+{
+  "action": "smalltalk",
+  "params": {},
+  "response": "I'm doing great! How can I help you with our restaurant services today?"
+}
+{
+  "action": "fetchCatalog",
+  "params": {
+    "branch": "BEN",
+    "channel": "Takeaway"
+  }
+}
+No extra text.
       `,
     },
     { role: "user", content: userInput },
@@ -54,22 +68,42 @@ Respond ONLY in JSON with:
     switch (action) {
       case "fetchCatalog": {
         const catalogData = await fetchCatalog(params);
-        ristaResponse = await summarizeData(catalogData, "catalog", userInput, params);
+        ristaResponse = await summarizeData(
+          catalogData,
+          "catalog",
+          userInput,
+          params
+        );
         break;
       }
       case "fetchResources": {
         const resourcesData = await fetchResources(params);
-        ristaResponse = await summarizeData(resourcesData, "resources", userInput, params);
+        ristaResponse = await summarizeData(
+          resourcesData,
+          "resources",
+          userInput,
+          params
+        );
         break;
       }
       case "fetchSoldOut": {
         const soldOutData = await fetchSoldOut(params);
-        ristaResponse = await summarizeData(soldOutData, "sold out items", userInput, params);
+        ristaResponse = await summarizeData(
+          soldOutData,
+          "sold out items",
+          userInput,
+          params
+        );
         break;
       }
       case "fetchSalesToday": {
         const salesData = await fetchSalesToday(params);
-        ristaResponse = await summarizeData(salesData, "sales summary", userInput, params);
+        ristaResponse = await summarizeData(
+          salesData,
+          "sales summary",
+          userInput,
+          params
+        );
         break;
       }
       case "smalltalk":
@@ -80,7 +114,9 @@ Respond ONLY in JSON with:
     }
 
     // Return string response or stringify object response
-    return typeof ristaResponse === "string" ? ristaResponse : JSON.stringify(ristaResponse);
+    return typeof ristaResponse === "string"
+      ? ristaResponse
+      : JSON.stringify(ristaResponse);
   } catch (error) {
     console.error("RistaApi error:", error);
     return "Sorry, something went wrong. Please try again later.";
@@ -95,8 +131,8 @@ async function summarizeData(data, dataType, userInput, params) {
       : "";
 
   const systemContent = `
-You are a summarizer. Summarize the following ${dataType} data in concise bullet points.
-Keep the reply simple, without symbols, suitable for WhatsApp chat.
+You are a summarizer. Summarize the following ${dataType} data in concise points.
+Keep the reply simple,in well formated suitable for WhatsApp chat.
 Include user context: "${userInput}"
 ${paramInfo}
   `.trim();
@@ -124,7 +160,9 @@ ${paramInfo}
 // Fetch functions -- clean with default params
 async function fetchCatalog({ branch = "BEN", channel }) {
   const jwtToken = TokenGen();
-  const apiUrl = `https://api.ristaapps.com/v1/catalog?branch=${branch}&channel=${channel || ""}`;
+  const apiUrl = `https://api.ristaapps.com/v1/catalog?branch=${branch}&channel=${
+    channel || ""
+  }`;
   const res = await fetch(apiUrl, {
     method: "GET",
     headers: {
