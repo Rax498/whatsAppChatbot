@@ -131,9 +131,11 @@ async function summarizeData(data, dataType, userInput, params) {
       : "";
 
   const systemContent = `
-You are a summarizer.Like a assitance Summarize the following ${dataType} data in concise points.using user context: "${userInput}"
-Keep the reply simple,clean well formated suitable for WhatsApp chat.
-  `.trim();
+Summarize the following ${dataType} based on what the user asked: "${userInput}".
+Use simple, natural language like a human. Keep it short, clear, and clean — easy to read on WhatsApp.
+Avoid special symbols or markdown (except ₹ or $ if needed). No technical terms. Just a helpful, friendly reply.
+`.trim();
+
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
