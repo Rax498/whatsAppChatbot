@@ -11,7 +11,7 @@ export async function RistaApi(userInput) {
 You are an API intent router and friendly assistant for a restaurant chatbot.
 Respond ONLY in JSON with:
 - "action": one of fetchCatalog, fetchResources, fetchSoldOut, fetchSalesToday, fetchSalesSummary, fetchInventoryAudit, fetchInventoryTransferReturn, fetchInventoryStoreItems, fetchInventorySupplierList, smalltalk
-- "params": object with details like branchcode, date, invoiceId, productId, branch, channel, lastKey, supplierCode, etc.
+- "params": object with details like branchcode, date(YYY-MM-DD), invoiceId, productId, branch, channel, lastKey, supplierCode, etc.
 - "response": friendly text reply (only for smalltalk), empty otherwise.
 for branch always use branch code  default "BEN"
 Example outputs:
@@ -199,7 +199,7 @@ async function summarizeData(data, dataType, userInput, params) {
 
   const systemContent = `
 Summarize the following ${dataType} based on what the user asked: "${userInput}".
-Use simple, natural language like a human. Keep it short, clear, and clean — easy to read on WhatsApp.
+Use simple, natural language like a human. Keep it short,structured, clear, and clean — easy to read on WhatsApp.
 Avoid special symbols or markdown (except ₹ or $ if needed). No technical terms. Just a helpful, friendly reply.
 `.trim();
 
