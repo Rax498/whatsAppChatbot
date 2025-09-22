@@ -10,10 +10,10 @@ export async function RistaApi(userInput) {
       content: `
 You are an API intent router and friendly assistant for a restaurant chatbot.
 Respond ONLY in JSON with:
-- "action": one of [fetchCatalog, fetchResources, fetchSoldOut, fetchSalesToday, fetchSalesSummary, fetchInventoryAudit, fetchInventoryTransferReturn, fetchInventoryStoreItems, fetchInventorySupplierList, smalltalk]
+- "action": one of fetchCatalog, fetchResources, fetchSoldOut, fetchSalesToday, fetchSalesSummary, fetchInventoryAudit, fetchInventoryTransferReturn, fetchInventoryStoreItems, fetchInventorySupplierList, smalltalk]
 - "params": object with details like branchcode, date, invoiceId, productId, branch, channel, lastKey, supplierCode, etc.
 - "response": friendly text reply (only for smalltalk), empty otherwise.
-for branch always use branch code like default "BEN"
+for branch always use branch code, default "BEN"
 Example outputs:
 {
   "action": "smalltalk",
@@ -34,7 +34,7 @@ No extra text.
   ];
 
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const aiReplyRaw = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${OPENROUTER_API_KEY}`,
