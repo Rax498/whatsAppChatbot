@@ -35,20 +35,14 @@ export async function POST(req) {
             const from = message.from;
             const userText = message.text.body;
 
-            // await sendText(from, "Hello, welcome to Rista Api!");
+            await sendWhatsAppMessage(from, { type: "action" });
 
             const aiResponse = await RistaApi(userText);
 
-            let responseText =
-              typeof aiResponse === "string"
-                ? aiResponse
-                : JSON.stringify(aiResponse);
-
-            if (responseText.length > 4096) {
-              responseText = responseText.substring(0, 4090) + "...";
-            }
-
-            await sendText(from, responseText);
+            await sendWhatsAppMessage(from, {
+              type: "text",
+              textBody: aiResponse,
+            });
           }
         }
       }
@@ -60,7 +54,19 @@ export async function POST(req) {
   }
 }
 
-async function sendText(to, text) {
+async function sendWhatsAppMessage(to, options) {
+  const bodyPayload = {
+    messaging_product: "whatsapp",
+    to,
+    type: options.type,
+  };
+
+  if (options.type === "text") {
+    bodyPayload.text = { body: options.textBody };
+  } else if (options.type === "action") {
+    bodyPayload.action = { typing: "on" };
+  }
+
   const response = await fetch(
     `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,
     {
@@ -69,17 +75,9 @@ async function sendText(to, text) {
         Authorization: `Bearer ${WHATSAPP_TOKEN}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to,
-        type: "text",
-        text: { body: text },
-      }),
+      body: JSON.stringify(bodyPayload),
     }
   );
 
-  if (!response.ok) {
-    const err = await response.text();
-    console.error("WhatsApp send error:", err);
-  }
+  return response;
 }
