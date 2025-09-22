@@ -76,6 +76,7 @@ No extra text.
     }
 
     const { action, params = {}, response } = parsed;
+    console.log('Parsed',parsed)
 
     let ristaResponse;
 
