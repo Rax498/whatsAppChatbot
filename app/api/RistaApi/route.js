@@ -41,7 +41,7 @@ No extra text.
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openrouter/sonoma-sky-alpha",
+        model: "x-ai/grok-4-fast:free",
         messages: history,
         temperature: 0.1,
       }),
