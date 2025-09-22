@@ -122,7 +122,7 @@ No extra text.
         break;
       }
       case "fetchSalesSummary": {
-        const salesSummaryData = await fetchSalesSummary(params);
+        const salesSummaryData = await fetchSalesSummary(params.params);
         ristaResponse = await summarizeData(
           salesSummaryData,
           "sales summary",
@@ -132,7 +132,7 @@ No extra text.
         break;
       }
       case "fetchInventoryAudit": {
-        const auditData = await fetchInventoryAuditPage(params);
+        const auditData = await fetchInventoryAuditPage(params.params);
         ristaResponse = await summarizeData(
           auditData,
           "inventory audit page",
@@ -143,7 +143,7 @@ No extra text.
       }
       case "fetchInventoryTransferReturn": {
         const transferReturnData = await fetchInventoryTransferReturnPage(
-          params
+         params.params
         );
         ristaResponse = await summarizeData(
           transferReturnData,
