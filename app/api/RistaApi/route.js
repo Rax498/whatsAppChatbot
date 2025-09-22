@@ -210,7 +210,7 @@ Avoid special symbols or markdown (except ₹ or $ if needed). No technical term
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "openrouter/sonoma-sky-alpha",
+      model:"x-ai/grok-4-fast:free",
       temperature: 0.2,
       messages: [
         { role: "system", content: systemContent },
