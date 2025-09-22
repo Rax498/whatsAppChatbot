@@ -33,12 +33,16 @@ export async function POST(req) {
         for (const message of messages) {
           if (message.type === "text") {
             const from = message.from;
+            const messageId = message.id; // <-- WhatsApp message ID here
             const userText = message.text.body;
 
-            await sendWhatsAppMessage(from, { type: "action" });
+            // Send typing indicator (mark message read + typing)
+            await sendTypingIndicator(from, messageId);
 
+            // Call AI and get response
             const aiResponse = await RistaApi(userText);
 
+            
             await sendWhatsAppMessage(from, {
               type: "text",
               textBody: aiResponse,
@@ -54,6 +58,32 @@ export async function POST(req) {
   }
 }
 
+// Send typing indicator
+async function sendTypingIndicator(to, messageId) {
+  const bodyPayload = {
+    messaging_product: "whatsapp",
+    status: "read",
+    message_id: messageId,
+    typing_indicator: {
+      type: "text"
+    },
+  };
+
+  const response = await fetch(
+    `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(bodyPayload),
+    }
+  );
+  return response;
+}
+
+// Send  WhatsApp text message
 async function sendWhatsAppMessage(to, options) {
   const bodyPayload = {
     messaging_product: "whatsapp",
@@ -63,8 +93,6 @@ async function sendWhatsAppMessage(to, options) {
 
   if (options.type === "text") {
     bodyPayload.text = { body: options.textBody };
-  } else if (options.type === "action") {
-    bodyPayload.action = { typing: "on" };
   }
 
   const response = await fetch(
