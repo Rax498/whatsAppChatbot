@@ -13,7 +13,7 @@ Respond ONLY in JSON with:
 - "action": one of fetchCatalog, fetchResources, fetchSoldOut, fetchSalesToday, fetchSalesSummary, fetchInventoryAuditPage, fetchInventoryTransferReturn, fetchInventoryStoreItems, fetchInventorySupplierList, smalltalk
 - "params": object with details like branchcode, date(YYY-MM-DD), invoiceId, productId, branch, channel, lastKey, supplierCode, etc.
 - "response": friendly text reply (only for smalltalk), empty otherwise.
-for branch always use branch code  default "BEN"
+for branch always use branch code  default "BEN"
 Example outputs:
 {
   "action": "smalltalk",
@@ -24,6 +24,7 @@ Example outputs:
   "action": "fetchCatalog",
   "params": {
     "branch": "BEN",
+    "date":YY-MM-DD,
     "channel": "Takeaway"
   }
 }
@@ -59,9 +60,7 @@ No extra text.
         errorBody
       );
       throw new Error(
-        `OpenRouter API error: ${res.status} ${
-          res.statusText
-        }: ${JSON.stringify(errorBody)}`
+        `OpenRouter API error: ${res.status} ${res.statusText}: ${JSON.stringify(errorBody)}`
       );
     }
 
@@ -76,100 +75,99 @@ No extra text.
     }
 
     const { action, params = {}, response } = parsed;
-    console.log('Parsed',parsed)
+    console.log("Parsed", parsed);
 
     let ristaResponse;
+    const safeParams = params || {};
 
     switch (action) {
       case "fetchCatalog": {
-        const catalogData = await fetchCatalog(params);
+        const catalogData = await fetchCatalog(safeParams);
         ristaResponse = await summarizeData(
           catalogData,
           "catalog",
           userInput,
-          params
+          safeParams
         );
         break;
       }
       case "fetchResources": {
-        const resourcesData = await fetchResources(params);
+        const resourcesData = await fetchResources(safeParams);
         ristaResponse = await summarizeData(
           resourcesData,
           "resources",
           userInput,
-          params
+          safeParams
         );
         break;
       }
       case "fetchSoldOut": {
-        const soldOutData = await fetchSoldOut(params);
+        const soldOutData = await fetchSoldOut(safeParams);
         ristaResponse = await summarizeData(
           soldOutData,
           "sold out items",
           userInput,
-          params
+          safeParams
         );
         break;
       }
       case "fetchSalesToday": {
-        const salesData = await fetchSalesToday(params);
+        const salesData = await fetchSalesToday(safeParams);
         ristaResponse = await summarizeData(
           salesData,
           "sales summary",
           userInput,
-          params
+          safeParams
         );
         break;
       }
       case "fetchSalesSummary": {
-        const salesSummaryData = await fetchSalesSummary(params);
+        const salesSummaryData = await fetchSalesSummary(safeParams);
         ristaResponse = await summarizeData(
           salesSummaryData,
           "sales summary",
           userInput,
-          params
+          safeParams
         );
         break;
       }
       case "fetchInventoryAudit": {
-        const auditData = await fetchInventoryAuditPage(params.params);
+        const auditData = await fetchInventoryAuditPage(safeParams);
         ristaResponse = await summarizeData(
           auditData,
           "inventory audit page",
           userInput,
-          params
+          safeParams
         );
         break;
       }
       case "fetchInventoryTransferReturn": {
-        const transferReturnData = await fetchInventoryTransferReturnPage(
-         params.params
-        );
+        const transferReturnData = await fetchInventoryTransferReturnPage(safeParams);
         ristaResponse = await summarizeData(
           transferReturnData,
           "inventory transfer return page",
           userInput,
-          params
+          safeParams
         );
         break;
       }
       case "fetchInventoryStoreItems": {
-        const storeItemsData = await fetchInventoryStoreItems(params);
+        const storeItemsData = await fetchInventoryStoreItems(safeParams);
         ristaResponse = await summarizeData(
           storeItemsData,
           "inventory store items",
           userInput,
-          params
+          safeParams
         );
         break;
       }
       case "fetchInventorySupplierList": {
-        const supplierListData = await fetchInventorySupplierList(params);
+        const supplierListData = await fetchInventorySupplierList(safeParams);
         ristaResponse = await summarizeData(
           supplierListData,
           "inventory supplier list",
           userInput,
-          params
+          safeParams
         );
         break;
       }
@@ -210,7 +208,7 @@ Avoid special symbols or markdown (except ₹ or $ if needed). No technical term
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model:"x-ai/grok-4-fast:free",
+      model: "x-ai/grok-4-fast:free",
       temperature: 0.2,
       messages: [
         { role: "system", content: systemContent },
@@ -223,9 +221,7 @@ Avoid special symbols or markdown (except ₹ or $ if needed). No technical term
   return json.choices?.[0]?.message?.content || "No summary available.";
 }
 
-// Your fetch functions with correct indentation
-
-async function fetchCatalog({ branch = "BEN", channel }) {
+async function fetchCatalog({ branch = "BEN", channel } = {}) {
   const jwtToken = TokenGen();
   const apiUrl = `https://api.ristaapps.com/v1/catalog?branch=${branch}&channel=${
     channel || ""
@@ -242,7 +238,7 @@ async function fetchCatalog({ branch = "BEN", channel }) {
   return await res.json();
 }
 
-async function fetchResources({ branch = "BEN" }) {
+async function fetchResources({ branch = "BEN" } = {}) {
   const jwtToken = TokenGen();
   const apiUrl = `https://api.ristaapps.com/v1/resource?branch=${branch}`;
   const res = await fetch(apiUrl, {
@@ -257,7 +253,7 @@ async function fetchResources({ branch = "BEN" }) {
   return await res.json();
 }
 
-async function fetchSoldOut({ branch = "BEN" }) {
+async function fetchSoldOut({ branch = "BEN" } = {}) {
   const jwtToken = TokenGen();
   const apiUrl = `https://api.ristaapps.com/v1/items/soldout?branch=${branch}`;
   const res = await fetch(apiUrl, {
@@ -272,7 +268,7 @@ async function fetchSoldOut({ branch = "BEN" }) {
   return await res.json();
 }
 
-async function fetchSalesToday({ branch = "BEN" }) {
+async function fetchSalesToday({ branch = "BEN" } = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const jwtToken = TokenGen();
   const apiUrl = `https://api.ristaapps.com/v1/sales/summary?branch=${branch}&day=${today}`;
@@ -288,10 +284,10 @@ async function fetchSalesToday({ branch = "BEN" }) {
   return await res.json();
 }
 
-async function fetchSalesSummary({ branch = "BEN", date }) {
-  console.log(branch,date)
+async function fetchSalesSummary({ branch = "BEN", date } = {}) {
   const jwtToken = TokenGen();
   const day = date || new Date().toISOString().slice(0, 10);
+  console.log(branch, day);
   const apiUrl = `https://api.ristaapps.com/v1/analytics/sales/summary?branch=${branch}&date=${day}`;
   const res = await fetch(apiUrl, {
     method: "GET",
@@ -309,14 +305,14 @@ async function fetchSalesSummary({ branch = "BEN", date }) {
   return await res.json();
 }
 
-async function fetchInventoryAuditPage({ branch = "BEN", day, lastKey }) {
-  console.log(branch,day,lastkey)
+async function fetchInventoryAuditPage({ branch = "BEN", day, lastKey } = {}) {
+  console.log(branch, day, lastKey);
   const jwtToken = TokenGen();
   const auditDay = day || new Date().toISOString().slice(0, 10);
   let apiUrl = `https://api.ristaapps.com/v1/inventory/audit/page?branch=${branch}&day=${auditDay}`;
-  // if (lastKey) {
-  //   apiUrl += `&lastKey=${lastKey}`;
-  // }
+  if (lastKey) {
+    apiUrl += `&lastKey=${lastKey}`;
+  }
   const res = await fetch(apiUrl, {
     method: "GET",
     headers: {
@@ -333,11 +329,7 @@ async function fetchInventoryAuditPage({ branch = "BEN", day, lastKey }) {
   return await res.json();
 }
 
-async function fetchInventoryTransferReturnPage({
-  branch = "BEN",
-  day,
-  lastKey,
-}) {
+async function fetchInventoryTransferReturnPage({ branch = "BEN", day, lastKey } = {}) {
   const jwtToken = TokenGen();
   const auditDay = day || new Date().toISOString().slice(0, 10);
   let apiUrl = `https://api.ristaapps.com/v1/inventory/transfer_return/page?branch=${branch}&day=${auditDay}`;
@@ -360,7 +352,7 @@ async function fetchInventoryTransferReturnPage({
   return await res.json();
 }
 
-async function fetchInventoryStoreItems({ branch = "BEN", day }) {
+async function fetchInventoryStoreItems({ branch = "BEN", day } = {}) {
   const jwtToken = TokenGen();
   const auditDay = day || new Date().toISOString().slice(0, 10);
   const apiUrl = `https://api.ristaapps.com/v1/inventory/store/items?branch=${branch}&day=${auditDay}`;
@@ -380,7 +372,7 @@ async function fetchInventoryStoreItems({ branch = "BEN", day }) {
   return await res.json();
 }
 
-async function fetchInventorySupplierList({ branch, supplierCode }) {
+async function fetchInventorySupplierList({ branch, supplierCode } = {}) {
   const jwtToken = TokenGen();
   let apiUrl = "https://api.ristaapps.com/v1/inventory/supplier/list";
   const queryParams = [];
