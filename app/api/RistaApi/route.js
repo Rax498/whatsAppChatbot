@@ -122,7 +122,7 @@ No extra text.
         break;
       }
       case "fetchSalesSummary": {
-        const salesSummaryData = await fetchSalesSummary(params.params);
+        const salesSummaryData = await fetchSalesSummary(params);
         ristaResponse = await summarizeData(
           salesSummaryData,
           "sales summary",
@@ -289,6 +289,7 @@ async function fetchSalesToday({ branch = "BEN" }) {
 }
 
 async function fetchSalesSummary({ branch = "BEN", date }) {
+  console.log(branch,date)
   const jwtToken = TokenGen();
   const day = date || new Date().toISOString().slice(0, 10);
   const apiUrl = `https://api.ristaapps.com/v1/analytics/sales/summary?branch=${branch}&date=${day}`;
@@ -309,12 +310,13 @@ async function fetchSalesSummary({ branch = "BEN", date }) {
 }
 
 async function fetchInventoryAuditPage({ branch = "BEN", day, lastKey }) {
+  console.log(branch,day,lastkey)
   const jwtToken = TokenGen();
   const auditDay = day || new Date().toISOString().slice(0, 10);
   let apiUrl = `https://api.ristaapps.com/v1/inventory/audit/page?branch=${branch}&day=${auditDay}`;
-  if (lastKey) {
-    apiUrl += `&lastKey=${lastKey}`;
-  }
+  // if (lastKey) {
+  //   apiUrl += `&lastKey=${lastKey}`;
+  // }
   const res = await fetch(apiUrl, {
     method: "GET",
     headers: {
