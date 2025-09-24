@@ -197,7 +197,7 @@ async function summarizeData(data, dataType, userInput, params) {
 
   const systemContent = `
 Summarize the following ${dataType} based on what the user asked: "${userInput}".
-Use simple, natural language like a human. Keep it short,structured, clear, and clean — easy to read on WhatsApp.
+Use simple, natural language like a human. Keep it minimal ,structured, clear, and clean — easy to read on WhatsApp.
 Avoid special symbols or markdown (except ₹ or $ if needed). No technical terms. Just a helpful, friendly reply.
 `.trim();
 
@@ -355,7 +355,13 @@ async function fetchInventoryTransferReturnPage({ branch = "BEN", day, lastKey }
 async function fetchInventoryStoreItems({ branch = "BEN", day } = {}) {
   const jwtToken = TokenGen();
   const auditDay = day || new Date().toISOString().slice(0, 10);
-  const apiUrl = `https://api.ristaapps.com/v1/inventory/store/items?branch=${branch}&day=${auditDay}`;
+  const apiUrl = `https://api.ristaapps.com/v1/inventory/store/items`;
+  const queryParams = [];
+  if (branch) queryParams.push(`branch=${branch}`);
+  if (day) queryParams.push(`day=${day}`);
+  if (queryParams.length > 0) {
+    apiUrl += "?" + queryParams.join("&");
+  }
   const res = await fetch(apiUrl, {
     method: "GET",
     headers: {
