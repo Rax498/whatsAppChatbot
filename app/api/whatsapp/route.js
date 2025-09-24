@@ -21,6 +21,9 @@ export async function GET(req) {
   }
 }
 
+// for checking the message Id
+const processedMessageIds = new Set();
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -33,16 +36,19 @@ export async function POST(req) {
         for (const message of messages) {
           if (message.type === "text") {
             const from = message.from;
-            const messageId = message.id; // <-- WhatsApp message ID here
+            const messageId = message.id; 
             const userText = message.text.body;
 
-            // Send typing indicator (mark message read + typing)
+            // Deduplicate by message ID
+            if (processedMessageIds.has(messageId)) {
+              continue; // Skip duplicate
+            }
+            processedMessageIds.add(messageId);
+
+            // typing effect MUST use messageId
             await sendTypingIndicator(from, messageId);
 
-            // Call AI and get response
             const aiResponse = await RistaApi(userText);
-
-            
             await sendWhatsAppMessage(from, {
               type: "text",
               textBody: aiResponse,
@@ -57,6 +63,7 @@ export async function POST(req) {
     return new Response("Internal Server Error", { status: 500 });
   }
 }
+
 
 // Send typing indicator
 async function sendTypingIndicator(to, messageId) {
