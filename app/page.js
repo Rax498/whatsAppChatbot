@@ -1,8 +1,9 @@
+import Chatbox from "../Components/Chatbox";
 
 export default function Home() {
   return (
-  <div style={{textAlign:'center'}}>
-    hellow world
-  </div>
+    <div className="min-h-screen ">
+      <Chatbox />
+    </div>
   );
 }
