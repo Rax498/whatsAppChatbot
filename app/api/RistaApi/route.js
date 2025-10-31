@@ -53,7 +53,7 @@ No extra text.
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openrouter/sonoma-sky-alpha",
+        model: "nvidia/nemotron-nano-12b-v2-vl:free",
         messages: history,
         temperature: 0.1,
       }),
