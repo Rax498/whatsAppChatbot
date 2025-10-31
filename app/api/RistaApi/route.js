@@ -56,6 +56,7 @@ No extra text.
         model: "nvidia/nemotron-nano-12b-v2-vl:free",
         messages: history,
         temperature: 0.1,
+        
       }),
     });
 
