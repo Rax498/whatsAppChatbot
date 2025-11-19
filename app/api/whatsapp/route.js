@@ -569,7 +569,7 @@ export async function POST(req) {
           if (message.type === "text") {
             const from = message.from;
             const messageId = message.id;
-
+            console.log("message recieved",message)
             await sendWhatsAppMessage(from);
           }
         }
