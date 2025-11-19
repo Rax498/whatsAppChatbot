@@ -601,13 +601,15 @@ async function sendWhatsAppMessage(to) {
       },
       action: {
         name: "flow",
-        parameters: {
-          flow_id: "24780667198299757",
-          flow_token: "flows-builder-67bb4922",
-          flow_cta: "Book a Reservation",
-          flow_action: "navigate",  // use "navigate" unless "data_exchange" specifically required and supported
-          mode: "draft",
-        },
+       parameters: {
+  flow_message_version: "3",  
+  flow_id: "24780667198299757",
+  flow_token: "flows-builder-67bb4922",
+  flow_cta: "Book a Reservation",
+  flow_action: "navigate",    
+  mode: "draft",
+},
+
       },
     },
   };
