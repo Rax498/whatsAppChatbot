@@ -533,7 +533,6 @@
 
 
 
-
 const WHATSAPP_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
@@ -569,7 +568,7 @@ export async function POST(req) {
           if (message.type === "text") {
             const from = message.from;
             const messageId = message.id;
-            console.log("message recieved",message)
+            console.log("Message received:", message);
             await sendWhatsAppMessage(from);
           }
         }
@@ -603,11 +602,10 @@ async function sendWhatsAppMessage(to) {
       action: {
         name: "flow",
         parameters: {
-          flow_id: "24780667198299757",           
-          flow_message_version: "3",
-          flow_token: "flows-builder-67bb4922",   
+          flow_id: "24780667198299757",
+          flow_token: "flows-builder-67bb4922",
           flow_cta: "Book a Reservation",
-          flow_action: "data_exchange",
+          flow_action: "navigate",  // use "navigate" unless "data_exchange" specifically required and supported
           mode: "draft",
         },
       },
@@ -625,5 +623,8 @@ async function sendWhatsAppMessage(to) {
       body: JSON.stringify(flowMessagePayload),
     }
   );
+
+  const resText = await response.text();
+  console.log("WhatsApp send status:", response.status, resText);
   return response;
 }
