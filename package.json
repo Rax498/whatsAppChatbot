@@ -11,13 +11,14 @@
   "dependencies": {
     "gpt-3-encoder": "^1.1.4",
     "lucide-react": "^0.544.0",
-    "next": "15.5.2",
-    "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "next": "^16.2.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4.1.13",
+    "@types/react": "19.2.14",
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
     "ngrok": "^5.0.0-beta.2",
