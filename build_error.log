@@ -1,0 +1,65 @@
+[33m[1m⚠[22m[39m Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of C:\Users\Rakesh.b\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * C:\Users\Rakesh.b\Desktop\HTML\whatsAppChatbot\package-lock.json
+
+
+> Build error occurred
+Error: Turbopack build failed with 3 errors:
+./Desktop/HTML/whatsAppChatbot/app/api/RistaApi/route.js:1:1
+[1m[31mModule not found[39m[22m: Can't resolve [32m'@/utils/Format_Utils'[39m
+[31m[1m>[0m [90m1 |[0m ... {
+  [90m  |[0m    [31m[1m^^^^^^^[0m
+[31m[1m>[0m [90m2 |[0m ...atCatalog,
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m3 |[0m ...atResources,
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m4 |[0m ...atSoldout,
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m5 |[0m ... [32m"@/utils/Format_Ut...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m6 |[0m ... { [33mTokenGen[0m } [36mfrom[0m [32m...[0m
+  [90m7 |[0m ... { [33mNextResponse[0m } [36mf...[0m
+  [90m8 |[0m ...[33mOPENROUTER_API_KEY[0m ...
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./Desktop/HTML/whatsAppChatbot/app/api/RistaApi/route.js:6:1
+[1m[31mModule not found[39m[22m: Can't resolve [32m'@/utils/TokenGen'[39m
+  [90m4 |[0m ...ut,
+  [90m5 |[0m ...[32mls/Format_Utils"[0m;
+[31m[1m>[0m [90m6 |[0m ...[33mnGen[0m } [36mfrom[0m [32m"@/util...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m7 |[0m ...[33mResponse[0m } [36mfrom[0m [32m"ne...[0m
+  [90m8 |[0m ...[33mTER_API_KEY[0m = proce...
+  [90m9 |[0m ...[33mOKEN[0m = process.env.[33m...[0m
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+./Desktop/HTML/whatsAppChatbot/app/api/Practice/route.js:1:1
+[1m[31mModule not found[39m[22m: Can't resolve [32m'@/utils/summary'[39m
+[31m[1m>[0m [90m1 |[0m ...[33mtaApi[0m } [36mfrom[0m [32m"@/uti...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m2 |[0m ...[33mtResponse[0m } [36mfrom[0m [32m"n...[0m
+  [90m3 |[0m ...[33mTOKEN[0m = process.env.[33m..[0m
+  [90m4 |[0m ...
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+    at <unknown> (./Desktop/HTML/whatsAppChatbot/app/api/RistaApi/route.js:1:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./Desktop/HTML/whatsAppChatbot/app/api/RistaApi/route.js:6:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at <unknown> (./Desktop/HTML/whatsAppChatbot/app/api/Practice/route.js:1:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
